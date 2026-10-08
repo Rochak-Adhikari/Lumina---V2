@@ -1,0 +1,10 @@
+#upload-workspace { width:min(760px,94vw); }
+#workspace-root, #workspace-selected { overflow-wrap:anywhere; }
+.workspace-actions { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
+#workspace-files { max-height:36vh; overflow:auto; display:grid; gap:8px; }
+.workspace-file { display:flex; flex-direction:column; align-items:flex-start; text-align:left; gap:5px; width:100%; padding:12px; overflow-wrap:anywhere; }
+.workspace-file[aria-pressed="true"] { outline:2px solid var(--accent, #d34d69); outline-offset:-2px; }
+.workspace-file small { opacity:.7; }
+#workspace-output { white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
+#upload-workspace .field { display:grid; gap:8px; margin:16px 0; }
+#workspace-question { width:100%; box-sizing:border-box; padding:12px; border:1px solid #35353c; border-radius:6px; background:#101014; color:#eee; font:inherit; }

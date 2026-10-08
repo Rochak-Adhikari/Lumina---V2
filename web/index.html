@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090b"><title>LUMINA — Personal intelligence</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/telemetry.css">
+  <link rel="stylesheet" href="/assets/audio-settings.css">
+  <link rel="stylesheet" href="/assets/crimson.css">
+  <link rel="stylesheet" href="/assets/reference-source.css">
+  <link rel="stylesheet" href="/assets/reference.css">
+  <link rel="stylesheet" href="/assets/upload-workspace.css">
+  <script type="module" src="/assets/reference.js"></script>
+  <script type="module" src="/assets/shell.js"></script>
+  <script src="/assets/vendor/3d-force-graph.min.js" defer></script>
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="/" aria-label="LUMINA home"><span class="logo" aria-hidden="true">◇</span><span>LUMINA<span class="version"> / 01</span><small>AI AGENT WORKSPACE</small></span></a>
+    <div class="top-status"><span class="status-dot" id="connection-dot"></span><span id="connection">Connecting to runtime</span><span class="divider"></span><span class="budget">No automatic paid fallback</span></div>
+    <button class="icon-button" id="automation-open">Automation</button><button class="icon-button" id="workspace-open">Workspace</button><button class="icon-button" id="workers-open">Workers</button><button class="icon-button" id="controls-open">Local controls</button><button class="icon-button" id="settings-open" aria-label="Open settings">⚙ <span>Settings</span></button>
+  </header>
+  <nav class="nav-rail" id="workspace-navigation" aria-label="Workspace navigation">
+    <button id="sidebar-toggle" type="button" aria-controls="workspace-navigation" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar">«</button>
+    <button data-focus="workspace" aria-label="Dashboard" aria-current="page"><span aria-hidden="true">⌂</span><span>Dashboard</span></button>
+    <button data-focus="message" aria-label="Chat"><span aria-hidden="true">▤</span><span>Chat</span></button>
+    <button data-open="workers-open" aria-label="Workers"><span aria-hidden="true">◈</span><span>Workers</span></button>
+    <button data-open="workspace-open" aria-label="Workspace"><span aria-hidden="true">▤</span><span>Workspace</span></button>
+    <button data-focus="query" aria-label="Knowledge search"><span aria-hidden="true">⌕</span><span>Knowledge</span></button>
+    <button data-open="automation-open" aria-label="Automation"><span aria-hidden="true">◷</span><span>Automation</span></button>
+    <button data-open="controls-open" aria-label="Local controls"><span aria-hidden="true">⌘</span><span>Controls</span></button>
+    <button data-open="settings-open" aria-label="Settings"><span aria-hidden="true">⚙</span><span>Settings</span></button>
+    <span class="rail-signature" aria-hidden="true">L / 01</span>
+  </nav>
+
+  <main class="workspace" id="workspace" tabindex="-1">
+    <section class="presence" aria-label="LUMINA assistant">
+      <div class="presence-heading"><span>Personal intelligence<small>Your AI command center</small></span><span class="state-tag" id="state-tag">Idle</span></div>
+      <div id="orb" role="img" aria-label="Animated LUMINA orb"><div class="orb-halo"></div></div>
+      <div class="orb-caption"><h1 id="headline">Here. At your command.</h1><p id="subline">Your space, a little more connected.</p></div>
+      <div class="console-heading">Conversation<span>LIVE SESSION</span></div>
+      <div class="conversation" id="conversation" aria-label="Conversation" aria-live="polite">
+        <article class="welcome"><span class="message-author">LUMINA</span><p>Start with something you need to find.</p><p class="muted">I can map your files and bring the relevant ones into view.</p></article>
+      </div>
+      <div class="live-transcript" id="live-transcript" aria-live="polite"></div>
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message">Message LUMINA</label>
+        <textarea id="message" rows="2" maxlength="4000" placeholder="Find my respiratory notes…"></textarea>
+        <div class="composer-actions"><button type="button" id="attach" class="composer-icon" aria-label="Upload a document" title="Upload a document">+</button><input id="file-upload" type="file" hidden multiple><button type="button" id="mic" class="mic-button" aria-pressed="false" aria-describedby="mic-hint" aria-label="Talk to LUMINA" title="Open microphone"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"></path></svg><span class="mic-label">Talk</span></button><button type="button" id="stop" class="quiet" aria-label="Stop speech and current request">Stop</button><button type="submit" class="send" aria-label="Send message" title="Send message"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h14M13 5l7 7-7 7"></path></svg></button></div>
+      </form>
+      <div class="input-options"><label><input type="checkbox" id="spoken" checked> Spoken replies</label><span id="mic-hint" role="status" aria-live="polite">Microphone off</span><button type="button" id="mic-settings" class="quiet">Microphone settings</button></div>
+    </section>
+
+    <section class="environment" aria-label="Knowledge environment">
+      <nav class="environment-tabs" aria-label="Environment actions"><span class="active">Environment</span><button data-open="workers-open">Workers</button><button data-open="controls-open">Local controls</button><button data-config="true">Models &amp; configuration</button></nav>
+      <div class="environment-heading"><div><h2>Your environment</h2><p id="root-label" title="Configured filesystem root">Reading configured root…</p></div><button id="refresh" class="icon-button" aria-label="Refresh environment">↻ <span>Refresh</span></button></div>
+      <div class="graph-toolbar"><div class="view-switch"><button id="overview" class="selected">Overview</button><span id="search-view">Search view</span></div><span id="node-count">0 entities</span></div>
+      <div class="graph-stage"><div id="graph" aria-label="Interactive 3D filesystem graph"></div><div class="graph-watermark">A view into your world.</div><div id="graph-empty" hidden>No matching files in the scanned portion of this root.</div><div class="graph-controls"><span>Drag to orbit · Scroll to explore</span><button id="fit" class="icon-button" aria-label="Fit graph to view">⛶</button></div></div>
+      <div class="legend" id="legend"></div>
+      <div class="search-panel"><div class="search-heading"><h3>Find in your files</h3><span>Local · Read only</span></div><form id="local-search"><label class="sr-only" for="query">Search filenames and folders</label><span aria-hidden="true">⌕</span><input id="query" maxlength="240" placeholder="Search filenames and folders" required><button type="submit">Find files</button></form><div class="search-summary" id="search-summary">Only the folder you choose. Nothing beyond it.</div><div id="results" aria-live="polite"></div></div>
+      <div class="selection" id="selection" hidden><button id="close-selection" aria-label="Close file details">×</button><span id="selection-type"></span><strong id="selection-name"></strong><p id="selection-path"></p><button id="copy-path">Copy path</button></div>
+    </section>
+  </main>
+  <footer><span><span class="tiny-dot"></span> Local runtime <span id="runtime-health">starting</span></span><span id="footer-mode">Your files stay within your control.</span><span>LUMINA / Personal workspace</span></footer>
+  <div id="notice" role="status" hidden></div>
+
+  <dialog id="settings"><div class="dialog-head"><h2>Workspace settings</h2><button id="settings-close" aria-label="Close settings">×</button></div><p class="muted">Configuration stays on your computer.</p>
+    <h3>Audio devices</h3><p id="device-status" role="status">Checking available devices…</p><button id="devices">Enable device access</button>
+    <p class="muted small">Opening these settings requests browser access if device names are hidden. Discovery briefly opens your selected or built-in microphone, or the Windows default when devices are hidden, then releases it. No audio is sent. A Bluetooth default microphone may briefly enter headset mode. Enable device access retries discovery.</p>
+    <label class="field">Microphone<select id="microphone"><option value="default">System default</option></select></label>
+    <button type="button" id="mic-test">Test microphone</button><meter id="mic-level" min="0" max="100" value="0" aria-label="Microphone input level"></meter><p id="mic-test-status" class="muted small" role="status">Test your input locally before speaking to LUMINA.</p><p class="muted small">Click the microphone icon to talk. Its green outline and the Listening status mean your microphone is on. Click it again to end the call. The microphone stays open through silence until you end the call or close LUMINA.</p>
+    <label class="field">Speaker<select id="speaker"><option value="default">System default</option></select></label>
+    <div class="audio-actions"><button type="button" id="speaker-choose" hidden>Choose audio output</button><button type="button" id="speaker-test">Play test sound</button></div>
+    <p id="speaker-status" class="muted small" role="status"></p>
+    <p class="muted small">Device choices are saved in this browser. Microphone audio is sent only during an explicit speaking turn .</p>
+    <details><summary>Runtime configuration</summary><dl id="config-details"></dl><div class="settings-note">Runtime configuration is stored in lumina.toml.</div></details>
+    <button id="voice-disconnect">Disconnect voice session</button>
+  </dialog>
+  <dialog id="upload-workspace" aria-labelledby="upload-workspace-title">
+    <div class="dialog-head"><h2 id="upload-workspace-title">Upload workspace</h2><button id="workspace-close" aria-label="Close upload workspace">×</button></div>
+    <p class="muted">Your uploads stay here between sessions. Select a file to read or analyze.</p>
+    <p id="workspace-root" class="muted small"></p>
+    <div class="workspace-actions"><button id="workspace-upload" type="button">Upload files</button><input id="workspace-upload-input" type="file" multiple hidden><button id="workspace-refresh" type="button">Refresh</button></div>
+    <form id="workspace-search" class="compact-form"><input id="workspace-query" maxlength="240" aria-label="Search uploads" placeholder="Search uploaded filenames"><button>Search</button></form>
+    <p id="workspace-status" role="status"></p><div id="workspace-files" aria-label="Uploaded files"></div>
+    <p id="workspace-selected">No file selected.</p>
+    <label class="field">Analysis question<input id="workspace-question" maxlength="2000" placeholder="Summarize this document."></label>
+    <div class="workspace-actions"><button id="workspace-read" type="button" disabled>Read locally</button><button id="workspace-analyze" type="button" disabled>Analyze</button></div>
+    <pre id="workspace-output" aria-live="polite"></pre>
+  </dialog>
+  <dialog id="controls"><div class="dialog-head"><h2>Local controls</h2><button id="controls-close" aria-label="Close local controls">×</button></div>
+    <p class="muted">Text commands work without online reasoning. Try “open notepad”, “system info”, or “read file README.md”.</p>
+    <section class="phase1-console" aria-labelledby="phase1-title"><div class="section-title"><h3 id="phase1-title">Phase One capabilities</h3><button id="phase1-refresh" type="button" class="quiet">Refresh</button></div><div id="phase1-status" class="phase1-status" role="status">Checking local capabilities…</div>
+      <form id="phase1-web-search" class="compact-form"><input id="phase1-query" maxlength="500" placeholder="Search the public web"><button>Search</button></form>
+      <form id="phase1-browser" class="compact-form"><input id="phase1-url" maxlength="4096" placeholder="https://example.com/"><button>Open supervised browser</button></form>
+      <div class="phase1-actions"><button id="phase1-screen" type="button">Capture screen</button><button id="phase1-reminder" type="button">Create reminder</button><button id="phase1-logs" type="button">View session logs</button></div>
+      <div class="compact-form"><input id="phase1-file-path" placeholder="Uploaded document or workspace path" aria-label="Document path"><button id="phase1-file-read" type="button">Read locally</button><button id="phase1-file-analyze" type="button">Analyze document</button></div>
+      <input id="phase1-question" placeholder="What would you like to know?" aria-label="Analysis question" maxlength="2000">
+      <button id="phase1-screen-analyze" type="button">Analyze screen</button>
+      <img id="phase1-preview" alt="Latest local screen capture" hidden style="max-width:100%;max-height:320px">
+      <div class="compact-form"><input id="phase1-reminder-text" placeholder="Reminder message" aria-label="Reminder message"><input id="phase1-reminder-seconds" type="number" min="1" max="31536000" value="120" aria-label="Remind after seconds"><button id="phase1-reminder-list" type="button">List reminders</button></div>
+      <div id="phase1-output" class="phase1-output" role="status"></div>
+    </section>
+    <form id="local-command"><label class="field">Local command<input id="local-command-text" required maxlength="4000" placeholder="system info"></label><button>Run local command</button></form>
+    <section class="session-log-panel" aria-labelledby="session-log-title"><div class="section-title"><h3 id="session-log-title">Session audit</h3><button id="session-log-refresh" type="button" class="quiet">Refresh</button></div><p class="muted small">The runtime retains the three newest session logs. Tool calls, outcomes, state changes, and safe lifecycle metadata are recorded locally.</p><div id="session-log-list"></div><pre id="session-log-view" hidden></pre></section>
+    <h3>Agent tasks</h3><p id="worker-status" class="muted">Checking configured workers…</p>
+    <form id="task-start"><label class="field">Worker<select id="task-worker"></select></label><label class="field">Workspace<input id="task-workspace" maxlength="2048" placeholder="Current project"></label><label class="field">Task<textarea id="task-message" required maxlength="12000"></textarea></label><p class="muted small">Starting sends this task to the selected configured worker. Review the worker and purpose before starting.</p><button id="task-submit">Start selected worker</button></form>
+    <div id="task-list"></div>
+  </dialog>
+  <dialog id="confirmation"><div class="dialog-head"><h2 id="confirmation-title">Confirm action</h2></div><p id="confirmation-message">Review this action before continuing.</p><p id="confirmation-target"></p><button id="confirmation-approve">Continue</button><button id="confirmation-deny">Cancel</button></dialog>
+  <dialog id="details"><div class="dialog-head"><h2 id="details-title">Result</h2><button id="details-close" aria-label="Close result">×</button></div><pre id="details-text"></pre></dialog>
+  <dialog id="workers-panel" style="width:min(1100px,94vw);max-width:94vw"><div class="dialog-head"><h2>Supervised workers</h2><button id="workers-close" aria-label="Close workers">×</button></div>
+    <p class="muted">Live terminal output stays here. LUMINA speaks only the result.</p>
+    <label class="field">Worker session<select id="worker-select" aria-label="Worker session"></select></label>
+    <p id="worker-meta">No worker sessions yet.</p><p id="worker-error" role="status"></p>
+    <pre id="worker-terminal" aria-label="Worker terminal output" style="height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#08090b;padding:16px"></pre>
+    <p id="worker-changes"></p><p id="worker-tests"></p>
+    <details><summary>Worker events</summary><pre id="worker-events"></pre></details>
+    <button id="worker-cancel" disabled>Stop selected agent</button><button id="worker-remove" disabled>Remove inactive agent</button>
+    <p class="muted small">Interactive input and pause are unavailable. Workspace file tools are supported; arbitrary shell execution is disabled.</p>
+  </dialog>
+<dialog id="automation-panel" aria-labelledby="automation-heading" style="max-width:900px;width:90vw;max-height:85vh;overflow:auto">
+  <header><h2 id="automation-heading">Automation</h2><button id="automation-close" type="button">Close</button></header>
+  <p id="automation-status" role="status">Loading capability status…</p>
+  <section><h3>Web watches</h3><p>Changes are evidence, not instructions. A quiet baseline is saved first.</p>
+  <form id="automation-watch-form"><label>Watch topic <input id="automation-query" required maxlength="500" placeholder="A topic you want to follow"></label><label>Check interval (seconds) <input id="automation-interval" type="number" min="60" max="86400" value="900" required></label><button type="submit">Create watch</button></form><div id="automation-watches"></div></section>
+  <section><h3>Notifications</h3><p id="automation-notification-state"></p><button id="automation-enable" type="button">Enable notifications</button><button id="automation-disable" type="button">Disable notifications</button><button id="automation-snooze" type="button">Snooze one hour</button><form id="automation-quiet-form"><label>Timezone <input id="automation-timezone" value="Asia/Kathmandu" required></label><label>Quiet from <input id="automation-quiet-start" type="time"></label><label>Until <input id="automation-quiet-end" type="time"></label><button type="submit">Save quiet hours</button></form><div id="automation-inbox"></div></section>
+  <section><h3>Windows settings</h3><form id="automation-settings-form"><label>Setting <select id="automation-setting-kind"><option value="brightness">Brightness</option><option value="mouse_speed">Mouse speed</option><option value="window">Window state</option><option value="audio">Audio volume and mute</option></select></label><label>Target identity <input id="automation-setting-target" maxlength="300"></label><label>Value / volume percent <input id="automation-setting-value" maxlength="20"></label><label><input id="automation-audio-mute" type="checkbox">Mute audio endpoint</label><label>Operation <select id="automation-setting-action"><option value="list_targets">Find targets</option><option value="get">Read current value</option><option value="set">Change value</option></select></label><button type="submit">Run setting operation</button></form><label>Undo record <input id="automation-undo-id"></label><button type="button" id="automation-undo">Undo verified change</button><pre id="automation-settings-result" style="white-space:pre-wrap;max-height:250px;overflow:auto"></pre></section>
+<section><h3>Windows controls</h3><p>Inspect a window, then use its snapshot and exact control identity. Changes require confirmation.</p><button type="button" id="automation-windows">List windows</button><form id="automation-control-form"><label>Window identity <input id="automation-window"></label><label>Snapshot <input id="automation-snapshot"></label><label>Control identity <input id="automation-control"></label><label>Text (not logged) <input id="automation-control-text" maxlength="8192" autocomplete="off"></label><label>Operation <select id="automation-control-action"><option value="inspect">Inspect window</option><option value="invoke">Invoke control</option><option value="type">Set text</option></select></label><button type="submit">Run control operation</button></form><pre id="automation-controls-result" style="white-space:pre-wrap;max-height:250px;overflow:auto"></pre></section>
+<section><h3>YouTube evidence</h3><form id="automation-youtube-form"><label>Video URL <input id="automation-youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=…"></label><label>Local transcript path (optional) <input id="automation-transcript-path"></label><label>Operation <select id="automation-youtube-action"><option value="metadata">Metadata</option><option value="transcript">Transcript</option><option value="summarize">Summary context</option><option value="open">Open video</option></select></label><button type="submit">Retrieve</button></form><pre id="automation-video-result" style="white-space:pre-wrap;max-height:280px;overflow:auto"></pre></section>
+  <p id="automation-result" role="status" style="white-space:pre-wrap"></p>
+</dialog>
+</body>
+</html>

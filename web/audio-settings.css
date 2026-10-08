@@ -1,0 +1,12 @@
+#settings{width:560px;max-height:88vh;overflow:auto;padding:28px}
+#settings .field{display:grid;grid-template-columns:1fr;gap:8px;margin-top:24px;font-weight:600}
+#settings select{width:100%;max-width:none;min-height:46px;color:var(--text);background:#201b23}
+#settings button{min-height:44px}
+#settings #devices{background:#78243b;color:#fff;border-color:#d86983}
+#settings .audio-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+#settings #mic-test{margin:12px 12px 0 0}
+#settings #mic-level{width:150px;height:14px;max-width:40%}
+#settings #device-status{padding:12px 14px;background:#1e1922;border-left:3px solid var(--soft);border-radius:4px;line-height:1.5}
+#settings details{margin:24px 0;border-top:1px solid var(--line);padding-top:18px}
+#settings summary{cursor:pointer;color:var(--muted);padding:8px 0}
+#settings .dialog-head button{min-width:44px}

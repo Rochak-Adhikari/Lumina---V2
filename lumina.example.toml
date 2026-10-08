@@ -1,0 +1,28 @@
+# Copy to lumina.toml. Environment variables override these values.
+provider = "gemini" # personal desktop build; failures leave local capabilities available
+root = "." # e.g. C:/Users/YourName/Documents/Notes
+# Additional existing folders for desktop tools; do not use entire drive roots.
+# Each worker receives only its selected workspace.
+desktop_roots = []
+host = "127.0.0.1" # loopback only
+port = 8764
+assistant_name = "LUMINA"
+user_name = ""
+model = "gemini-3.1-flash-live-preview"
+live_model = "gemini-3.1-flash-live-preview"
+worker = "none" # none or claude; Claude Code must already be installed
+worker_executable = "claude"
+worker_timeout = 1800
+worker_backend = "tmux" # persistent MSYS2 sessions; conpty is the legacy task-bound adapter
+msys_root = "C:/msys64" # configure the actual installed MSYS2 location
+agent_limit = 4
+memory_path = "" # private app-data database by default
+voice = "Aoede"
+microphone_device = "default" # browser device ID, selected in Settings
+speaker_device = "default"
+graph_limit = 600
+scan_limit = 20000
+scan_seconds = 5
+# GEMINI_API_KEY must be set in the environment. Never put secrets here.
+# Online mode uses the Gemini API key directly. See README.md before enabling Gemini.
+

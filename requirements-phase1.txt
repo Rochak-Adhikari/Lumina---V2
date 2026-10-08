@@ -1,0 +1,9 @@
+# Optional Phase One capabilities. Missing dependencies are reported at runtime.
+pypdf==6.19.0
+python-docx==1.2.0
+python-pptx==1.0.2
+openpyxl==3.1.5
+Pillow==12.3.0
+mss==10.2.0
+tzdata==2026.5
+playwright==1.63.0

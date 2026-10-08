@@ -1,0 +1,11 @@
+Script started on 2026-10-06 14:11:30+05:45 [COMMAND="export TERM=xterm-256color" TERM="dumb" TTY="/dev/cons0" COLUMNS="120" LINES="30"]
+export : The term 'export' is not recognized as the name of a cmdlet, function, script file, or operable program. 
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ export TERM=xterm-256color
++ ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (export:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+
+Script done on 2026-10-06 14:11:33+05:45 [COMMAND_EXIT_CODE="1"]

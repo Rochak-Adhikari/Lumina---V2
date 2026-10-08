@@ -1,0 +1,3 @@
+.orb-telemetry{position:absolute;inset:12px 0;z-index:2;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end}
+.orb-readout{display:grid;gap:5px;width:128px;padding:9px 12px;background:#111017e8;border:1px solid #50303c;border-radius:8px;font-size:10px;color:#bca7b0}
+.orb-readout[hidden]{display:none}.orb-readout output{font-size:18px;color:#ffb6c4;font-variant-numeric:tabular-nums}.orb-readout meter{width:100%;height:8px;accent-color:#f23859}

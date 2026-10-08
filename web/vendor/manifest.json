@@ -1,0 +1,22 @@
+{
+  "three.module.js": {
+    "url": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+    "sha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495",
+    "bytes": 1272972
+  },
+  "three.LICENSE": {
+    "url": "https://cdn.jsdelivr.net/npm/three@0.160.1/LICENSE",
+    "sha256": "852e0e8699169bf9f6fdc6bda3e682d078dcbc738b5d33e74df594721bff271d",
+    "bytes": 1081
+  },
+  "3d-force-graph.min.js": {
+    "url": "https://cdn.jsdelivr.net/npm/3d-force-graph@1.79.0/dist/3d-force-graph.min.js",
+    "sha256": "2a1a29d3ccc5159f04a1b50b163fcb903333c026b122bff858a70965b2c38e87",
+    "bytes": 1240059
+  },
+  "3d-force-graph.LICENSE": {
+    "url": "https://cdn.jsdelivr.net/npm/3d-force-graph@1.79.0/LICENSE",
+    "sha256": "7262e566e874d1ce8cfadace01d4f635f8d704b6bdf7b4345cc028e5faeafded",
+    "bytes": 1072
+  }
+}
