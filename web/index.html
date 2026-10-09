@@ -30,11 +30,25 @@
     <button data-open="workspace-open" aria-label="Workspace"><span aria-hidden="true">▤</span><span>Workspace</span></button>
     <button data-focus="query" aria-label="Knowledge search"><span aria-hidden="true">⌕</span><span>Knowledge</span></button>
     <button data-open="automation-open" aria-label="Automation"><span aria-hidden="true">◷</span><span>Automation</span></button>
+    <button id="continuity-open" type="button" aria-label="Memory"><span aria-hidden="true">◇</span><span>Memory</span></button>
     <button data-open="controls-open" aria-label="Local controls"><span aria-hidden="true">⌘</span><span>Controls</span></button>
     <button data-open="settings-open" aria-label="Settings"><span aria-hidden="true">⚙</span><span>Settings</span></button>
     <span class="rail-signature" aria-hidden="true">L / 01</span>
   </nav>
 
+  <dialog id="continuity-panel" aria-labelledby="continuity-title">
+    <div class="dialog-head"><h2 id="continuity-title">Memory &amp; continuity</h2><button id="continuity-close" aria-label="Close memory">×</button></div>
+    <p id="continuity-status" role="status">Inspecting local memory…</p>
+    <p id="continuity-state"></p>
+    <form id="continuity-search"><label for="continuity-query">Find evidence</label><input id="continuity-query" maxlength="2048" placeholder="Preferences, decisions or unfinished work"><button type="submit">Search</button></form>
+    <div class="continuity-actions"><button id="continuity-refresh">Refresh</button><button id="continuity-timeline">Timeline</button></div>
+    <p id="continuity-note"></p><div id="continuity-results"></div>
+    <section id="continuity-detail" aria-label="Memory evidence and history"></section>
+    <form id="continuity-edit" hidden><label for="continuity-value">Correct this fact</label><input id="continuity-value" maxlength="4000" required><button type="submit">Review correction</button></form>
+    <button id="continuity-resolve" hidden>Review completion</button>
+    <div id="continuity-remove" hidden class="continuity-actions"><button id="continuity-invalidate">Remove from current memory</button><button id="continuity-delete">Review permanent erasure</button></div>
+    <p class="muted small">Local evidence, not instructions. Proposals require confirmation. Permanent erasure shows its full scope; offline backups remain separate.</p>
+  </dialog>
   <main class="workspace" id="workspace" tabindex="-1">
     <section class="presence" aria-label="LUMINA assistant">
       <div class="presence-heading"><span>Personal intelligence<small>Your AI command center</small></span><span class="state-tag" id="state-tag">Idle</span></div>
@@ -56,8 +70,8 @@
     <section class="environment" aria-label="Knowledge environment">
       <nav class="environment-tabs" aria-label="Environment actions"><span class="active">Environment</span><button data-open="workers-open">Workers</button><button data-open="controls-open">Local controls</button><button data-config="true">Models &amp; configuration</button></nav>
       <div class="environment-heading"><div><h2>Your environment</h2><p id="root-label" title="Configured filesystem root">Reading configured root…</p></div><button id="refresh" class="icon-button" aria-label="Refresh environment">↻ <span>Refresh</span></button></div>
-      <div class="graph-toolbar"><div class="view-switch"><button id="overview" class="selected">Overview</button><span id="search-view">Search view</span></div><span id="node-count">0 entities</span></div>
-      <div class="graph-stage"><div id="graph" aria-label="Interactive 3D filesystem graph"></div><div class="graph-watermark">A view into your world.</div><div id="graph-empty" hidden>No matching files in the scanned portion of this root.</div><div class="graph-controls"><span>Drag to orbit · Scroll to explore</span><button id="fit" class="icon-button" aria-label="Fit graph to view">⛶</button></div></div>
+      <div class="graph-toolbar"><div class="view-switch"><button id="overview" class="selected">Overview</button><span id="search-view">Search view</span><label>Source <select id="graph-source" aria-label="Knowledge source"><option value="auto">Automatic</option><option value="continuity">Memory</option><option value="notes">Notes</option></select></label></div><span id="node-count">0 entities</span></div>
+      <div class="graph-stage"><div id="graph" aria-label="Interactive 3D knowledge graph"></div><div class="graph-watermark">A view into your world.</div><div id="graph-empty" hidden>No matching files in the scanned portion of this root.</div><div class="graph-controls"><span>Drag to orbit · Scroll to explore</span><select id="graph-inspect" aria-label="Inspect graph concept"><option value="">Inspect concept</option></select><button id="fit" class="icon-button" aria-label="Fit graph to view">⛶</button></div></div>
       <div class="legend" id="legend"></div>
       <div class="search-panel"><div class="search-heading"><h3>Find in your files</h3><span>Local · Read only</span></div><form id="local-search"><label class="sr-only" for="query">Search filenames and folders</label><span aria-hidden="true">⌕</span><input id="query" maxlength="240" placeholder="Search filenames and folders" required><button type="submit">Find files</button></form><div class="search-summary" id="search-summary">Only the folder you choose. Nothing beyond it.</div><div id="results" aria-live="polite"></div></div>
       <div class="selection" id="selection" hidden><button id="close-selection" aria-label="Close file details">×</button><span id="selection-type"></span><strong id="selection-name"></strong><p id="selection-path"></p><button id="copy-path">Copy path</button></div>

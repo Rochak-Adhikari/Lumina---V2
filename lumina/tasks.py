@@ -44,11 +44,13 @@ class TaskManager:
 
     def __init__(self, workers: dict[str, WorkerAdapter] | None = None,
                  on_event: Callable[[dict], None] | None = None,
-                 format_summary: Callable[[str], str] | None = None):
+                 format_summary: Callable[[str], str] | None = None,
+                 on_continuity: Callable[[dict], None] | None = None):
         self.workers = dict(workers or {})
         self._sessions: dict[str, _Session] = {}
         self.on_event = on_event
         self.format_summary = format_summary
+        self.on_continuity = on_continuity
         for name,adapter in self.workers.items():
             if getattr(adapter,'persistent',False):
                 for task_id,record in adapter.records.items():
@@ -59,6 +61,7 @@ class TaskManager:
 
     async def restore_monitors(self):
         for session in self._sessions.values():
+            self._observe(session)
             if getattr(self.workers[session.worker],'persistent',False) and session.runner is None and session.status=='RUNNING':
                 session.runner=asyncio.create_task(self._run(session,None))
 
@@ -82,6 +85,7 @@ class TaskManager:
         return self._sessions[task_id]
 
     def _emit(self, session: _Session):
+        self._observe(session)
         adapter=self.workers[session.worker]
         if getattr(adapter,'persistent',False):
             adapter.save_task_state(session.id,session.status,session.summary,session.completed_at)
@@ -94,6 +98,14 @@ class TaskManager:
             except Exception:
                 pass
 
+    def _observe(self, session):
+        if self.on_continuity:
+            try:
+                self.on_continuity({'task_id':session.id,'status':session.status,
+                    'description':session.messages[0][:4000] if session.messages else '', 'workspace':session.workspace})
+            except Exception:
+                pass  # Memory availability never changes a real task outcome.
+
     async def start_task(self, worker: str, message: str, *, authorized: bool = False, workspace=None) -> dict:
         if authorized is not True:
             raise PermissionError("Starting an agent task requires your instruction.")
@@ -105,6 +117,7 @@ class TaskManager:
             raise ValueError('This worker does not support workspace selection.')
         session.workspace = str(workspace) if workspace is not None else None
         self._sessions[session.id] = session
+        self._observe(session)
         session.runner = asyncio.create_task(self._run(session, message))
         return self.read_agent_session(session.id)
 
@@ -174,6 +187,7 @@ class TaskManager:
         adapter=self.workers[session.worker]
         if getattr(adapter,'persistent',False):adapter.save_task_state(task_id,'RUNNING')
         session.messages.append(message)
+        self._observe(session)
         session.runner = asyncio.create_task(self._run(session, message))
         return self.read_agent_session(task_id)
 

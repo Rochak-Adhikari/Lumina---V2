@@ -146,7 +146,7 @@ export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
       if(message.type==='analysis_progress'){$('phase1-output').textContent=message.stage==='processing'?'Processing…':'Analyzing…';$('workspace-output').textContent=$('phase1-output').textContent;}
       if(message.type==='analysis_transcript'){const output=$('workspace-output');if(output.dataset.speech!==String(message.speech_id)){output.textContent='';output.dataset.speech=String(message.speech_id);}output.textContent+=message.text;}
       if(message.type==='confirmation_resolved'&&confirmation===message.confirmation_id){confirmation=null;$('confirmation').close();}
-      if(message.type==='announcement_ack'){if(message.status!=='busy')announcements=announcements.filter(id=>id!==message.id);announcementInFlight=null;speakNext();}
+      if(message.type==='announcement_ack'){if(message.status!=='busy')announcements=announcements.filter(id=>id!==message.id);announcementInFlight=null;if(message.status!=='busy')speakNext();}
       if(message.type==='voice_closed')announcementInFlight=null;
       if(message.type==='confirmation')showConfirmation(message.data);
       if(message.type==='file_content')details(message.path,message.text);

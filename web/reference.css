@@ -34,7 +34,10 @@ body.reference-ui{background:#020304;color:#f3f2f3;font-family:LuminaUI,'Segoe U
 .environment-tabs{position:relative;margin:-10px -15px 20px;padding:6px 12px;min-height:46px;background:#040405;border:0;gap:0}.environment-tabs>*:not(svg){position:relative;z-index:1;font:12px LuminaUI,sans-serif;padding:12px 16px;flex:1;text-align:center;white-space:nowrap}.environment-tabs .active{background:linear-gradient(0deg,#7905188c,#36050b33);border-left:1px solid #ff596a;border-right:1px solid #ff596a;border-bottom:2px solid #ff5264;box-shadow:0 4px 9px #fc0b3355;color:white}
 .environment-heading h2{font:500 19px LuminaUI,sans-serif}.environment-heading p{font:12px LuminaUI,sans-serif;color:#aaa6ae;max-width:33vw}#refresh{font-size:19px;border-color:#582330;background:#110b0e}.graph-toolbar{margin-top:12px}.view-switch button.selected{background:linear-gradient(#b9072099,#a50018);border-color:#ff4c61;box-shadow:inset 0 0 10px #ff2b4966,0 0 8px #ff193c33;color:white;font-size:12px}.view-switch span,#node-count{font:12px LuminaUI,sans-serif}
 .graph-stage{border:1px solid #531020;min-height:230px;background:#030405;border-radius:14px 4px;box-shadow:inset 0 0 35px #ff173d08}.graph-controls>span{font-size:11px}.graph-controls button{border-color:#34343d;border-radius:5px;background:#070b0ddd;width:36px;height:36px}
-.graph-hud-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}.graph-hud-label{position:absolute;left:0;top:0;width:152px;padding:8px 10px;border:1px solid var(--node-color);background:#070509ed;border-radius:7px;box-shadow:0 0 9px #0008}.graph-hud-label strong{display:block;font:12px LuminaUI,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#f2f1f3}.graph-hud-label small{display:block;color:var(--node-color);font:10px LuminaUI,sans-serif;margin-top:4px}
+.graph-hud-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.graph-hud-label{position:absolute;left:0;top:0;width:138px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--node-color) 70%,transparent);background:linear-gradient(150deg,#080b10f5,#030507f5);border-radius:7px 3px 7px 3px;box-shadow:inset 0 0 12px color-mix(in srgb,var(--node-color) 7%,transparent),0 4px 12px #0008}
+.graph-hud-leader{position:absolute;left:0;top:0;height:1px;transform-origin:left center;background:var(--node-color);box-shadow:0 0 5px var(--node-color);pointer-events:none}
+.graph-hud-label strong{display:block;font:12px LuminaUI,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#f2f1f3}.graph-hud-label small{display:block;color:var(--node-color);font:10px LuminaUI,sans-serif;margin-top:4px}
 .legend{font:10px/1.5 LuminaUI,sans-serif;min-height:24px;padding:8px 0;border:0}.search-panel{padding:17px 17px 14px;margin:4px -10px -6px;position:relative;background:#050405}.search-panel>*:not(svg){position:relative;z-index:1}.search-heading h3{font:500 16px LuminaUI,sans-serif}.search-heading>span{font-size:11px}#local-search{border:1px solid #363139;border-radius:8px;background:linear-gradient(110deg,#121112,#08090b);min-height:45px}#query{font:13px LuminaUI,sans-serif}#local-search button{background:linear-gradient(#d8082299,#ab0019);box-shadow:inset 0 0 9px #ff263e66,0 0 9px #fd0d3233;border:1px solid #ff3a53;font:13px LuminaUI,sans-serif;min-height:34px}.search-summary{font:11px LuminaUI,sans-serif;padding-top:9px}
 .nav-rail{top:103px;bottom:45px;width:var(--rail);padding:52px 8px 18px;background:linear-gradient(90deg,#080708,#020304);border:0;min-height:640px;gap:7px;overflow:hidden}.nav-rail>*:not(.lm-frame){z-index:1}.nav-rail button:not(#sidebar-toggle){position:relative;display:flex;flex-direction:row;justify-content:flex-start;gap:15px;padding:0 17px;min-height:48px;border-radius:5px;font:14px LuminaUI,sans-serif;color:#b7c3ce;white-space:nowrap}.nav-rail button[aria-current]{background:linear-gradient(90deg,#a3001f88,#300209 75%,#b3002077);border:1px solid #ff3147;box-shadow:inset 3px 0 9px #ff173d60,0 0 10px #ff062333;color:white}.nav-rail button>span:first-child{width:22px;flex:none}.rail-signature{display:none}
 #sidebar-toggle{position:absolute;top:12px;left:12px;right:12px;height:32px;min-height:32px;border:1px solid #6f1c30;border-radius:5px;background:#16080d;color:#ff788d;font:24px LuminaUI,sans-serif;display:grid;place-items:center;padding:0}
@@ -68,3 +71,24 @@ footer{height:42px;border-top:1px solid #9a1425;background:#030507;color:#a3b0ba
 #screen-share-preview { border:1px solid rgba(255,255,255,.15); border-radius:8px; }
 #screen-share-status { display:block; font-size:11px; color:var(--text-muted,#a9abb4); }
 #screen-share[aria-pressed="true"] { border-color:#ff173d; color:#ff8a9d; }
+:root #continuity-panel{width:min(920px,92vw);max-height:86vh;overflow:auto;background:#090a0e;color:#e9edf3;border:1px solid #493039}
+#continuity-panel form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+#continuity-panel form[hidden],#continuity-panel [hidden]{display:none}
+#continuity-panel input{flex:1;min-width:180px}
+#continuity-panel input{background:#030405;border:1px solid #ffffff24;border-radius:6px;padding:10px;color:#e9edf3}
+#continuity-detail{margin-top:16px;padding:14px;border:1px solid #ffffff12;border-radius:6px;background:#07080b}
+#continuity-detail:empty{display:none}
+#continuity-detail dl{display:grid;grid-template-columns:repeat(2,minmax(70px,1fr) minmax(50px,1fr));gap:8px;font-size:13px}
+#continuity-detail dt{color:#a2a8b4}#continuity-detail dd{margin:0}
+#continuity-detail summary{cursor:pointer;color:#b9c3d6;padding:10px 0}
+#continuity-detail h3{font-size:18px;color:#f4d5dc;margin:0 0 12px}
+#continuity-detail h4{font-size:13px;color:#a2a8b4;margin:16px 0 8px}
+#continuity-detail p{overflow-wrap:anywhere}
+#continuity-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:38vh;overflow:auto;background:#030405;padding:12px}
+.continuity-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-bottom:1px solid #ffffff12}
+.continuity-row span{overflow-wrap:anywhere;min-width:0}
+.continuity-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+/* Knowledge-source and keyboard inspection controls use the existing HUD. */
+#graph-source,#graph-inspect{color:#e5e5ec;background:#111115;border:1px solid #49404a;border-radius:5px;padding:5px;font-size:11px;max-width:180px}
+#graph-inspect{pointer-events:auto;max-width:190px}
+#legend{max-height:3.2em;overflow:auto;scrollbar-width:thin}

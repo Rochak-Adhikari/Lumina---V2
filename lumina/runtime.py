@@ -3,6 +3,9 @@ import time
 import re
 import base64
 import uuid
+import sqlite3
+from contextvars import ContextVar
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit, urlunsplit
 from .filesystem import FileIndex
@@ -12,6 +15,7 @@ from .speech import spoken_text, brief_spoken_text
 from .tasks import TaskManager
 from .memory import MemoryStore
 from .session_log import SessionLog
+from .continuity_commands import ContinuityCommands, SCHEMAS as MEMORY_SCHEMAS, user_evidence, summary as memory_summary
 
 STATES = {"IDLE", "LISTENING", "THINKING", "EXECUTING", "SPEAKING", "INTERRUPTED", "WAITING_FOR_USER", "ERROR"}
 
@@ -33,11 +37,26 @@ class Runtime:
     def __init__(self, config, provider=None, workers=None):
         self.config = config
         self.index = FileIndex(config)
-        self.memory = MemoryStore(getattr(config, 'memory_path', ''))
-        self.tools = ToolRegistry(self.index, self.memory)
         self.session_log = SessionLog(config.root)
+        self.session_id = self.session_log.session_id
+        self.last_user_event_id = None
+        self.last_memory_question = ''
+        self._direct_reply_owner = ContextVar('lumina_direct_reply_owner', default=None)
+        self.project_id = None
+        self.continuity_error = None
+        try:
+            self.memory = MemoryStore(getattr(config, 'memory_path', ''))
+        except (OSError, sqlite3.Error, ValueError):
+            from .memory import UnavailableMemory
+            self.memory = UnavailableMemory()
+        self.tools = ToolRegistry(self.index, self.memory)
+        self.tools.memory_context = self.memory_context
+        self.continuity_commands = ContinuityCommands(self)
+        self._continuity_workspace = None
+        self.sync_memory_workspace()
         self.session_log.write('runtime.initialized', provider=config.provider, worker=config.worker,
-                               workspace=str(config.root))
+                               workspace=str(config.root), memory_path=str(self.memory.path) if self.memory.path else None,
+                               memory_status=self.memory_operation('status').get('status'))
         if workers is None and config.worker == "claude":
             if config.worker_backend=='tmux':
                 from .tmux_worker import TmuxWorker
@@ -75,7 +94,8 @@ class Runtime:
             self.state.get('state') in {'LISTENING','THINKING','EXECUTING','SPEAKING','WAITING_FOR_USER'})
         self.agent_summary_tasks = set()
         self.audit = []
-        self.tasks = TaskManager(workers, self.agent_event, brief_spoken_text)
+        self.tasks = TaskManager(workers, self.agent_event, brief_spoken_text,
+                                 on_continuity=self.continuity_task)
         self.tools.worker_status=lambda:[{k:v for k,v in s.items() if k not in {'output','events'}} for s in self.worker_sessions()]
         self.tools.agent_tail=self.read_agent_tail
         self.tools.spawn_agent=self.start_coding_agent
@@ -83,6 +103,76 @@ class Runtime:
         self.last_uploaded_file=None
         for worker in self.tasks.workers.values():
             if hasattr(worker,'manager'): worker.manager.on_event=self.worker_event
+
+    def memory_context(self):
+        return {'session_id': self.session_id, 'project_id': self.project_id,
+                'device_id': getattr(self.memory, 'device_id', None),
+                'model_metadata': {'provider':self.config.provider,'model':self.config.model,'prompt_version':'continuity-v1'},
+                'source_event_id': self.last_user_event_id, 'query': self.last_memory_question}
+
+    def memory_operation(self, operation, *args, **kwargs):
+        """Continuity failure cannot change a completed user/worker operation."""
+        try:
+            result = getattr(self.memory, operation)(*args, **kwargs)
+            if isinstance(result, dict) and result.get('ok') is False:
+                self.continuity_error = 'Memory could not persist or retrieve this operation.'
+            if operation in {'propose','remember','correct','consolidate','continuation','forget'}:
+                self.session_log.write('continuity.'+operation,ok=result.get('ok') if isinstance(result,dict) else None,
+                    decision=result.get('decision') if isinstance(result,dict) else None)
+            return result
+        except Exception:
+            self.continuity_error = 'Memory is unavailable; no save was confirmed.'
+            self.session_log.write('continuity.unavailable', operation=operation)
+            return {'ok': False, 'status': 'unavailable', 'error': self.continuity_error}
+
+    def sync_memory_workspace(self):
+        path = str(Path(self.tools.desktop.workspace.active_workspace).resolve())
+        if path == self._continuity_workspace:
+            return
+        result = self.memory_operation('set_workspace', path, session_id=self.session_id)
+        if result.get('ok') is False:
+            return
+        project = result.get('project', result.get('entity', result))
+        self.project_id = result.get('project_id') or project.get('id')
+        self._continuity_workspace = path
+
+    def capture_user_evidence(self, text):
+        self.last_user_event_id = None
+        self.memory.last_user_event_id = None
+        selected = user_evidence(text)
+        self.last_memory_question = selected or ''
+        if selected is None:
+            return None
+        self.sync_memory_workspace()
+        result = self.memory_operation('record_event', 'conversation.message',
+            {'role': 'user', 'text': selected}, source_type='user',
+            session_id=self.session_id, project_id=self.project_id,
+            device_id=getattr(self.memory, 'device_id', None))
+        if result.get('ok') is not False:
+            self.last_user_event_id = result.get('id')
+            self.memory.last_user_event_id = self.last_user_event_id
+        return self.last_user_event_id
+
+    def continuity_task(self, event):
+        self.sync_memory_workspace()
+        self.memory_operation('observe_task', event['task_id'], event['status'],
+            description=user_evidence(event.get('description', '')) or '',
+            workspace=event.get('workspace'), session_id=self.session_id, project_id=self.project_id)
+
+    def continuity_tool(self, name, result):
+        if name in MEMORY_SCHEMAS or name == 'search_memory':
+            return
+        self.sync_memory_workspace()
+        # Only observed operation metadata crosses into event capture. No raw
+        # command arguments, file contents, provider text or worker output.
+        selected = {key: result[key] for key in ('ok', 'status', 'verified', 'confirmation_required',
+            'exit_code', 'task_id') if key in result and isinstance(result[key], (str, int, bool, type(None)))}
+        if result.get('ok') is True and not result.get('confirmation_required') and result.get('verified') is not False:
+            for key in ('path', 'output_path', 'application_id', 'pid'):
+                if isinstance(result.get(key), (str, int)):
+                    selected[key] = result[key]
+        self.memory_operation('observe_tool', name, {}, selected,
+                              session_id=self.session_id, project_id=self.project_id)
 
     def worker_event(self,event):
         self.broadcast(event)
@@ -178,6 +268,10 @@ class Runtime:
         self.queue_announcement(text)
 
     def queue_announcement(self, text):
+        # Direct replies are spoken by their own connection/turn, immediately.
+        # Background agent/reminder tasks still retain their notification queue.
+        owner = self._direct_reply_owner.get()
+        if owner is not None and owner is asyncio.current_task():return
         key = str(self.message_id)
         self.announcements[key] = brief_spoken_text(text)
         self.announcements = dict(list(self.announcements.items())[-20:])
@@ -209,8 +303,16 @@ class Runtime:
         except RuntimeError:pass
 
     async def local_command(self, text, allow_search=True, output_client=None, speak=False):
+        token=self._direct_reply_owner.set(asyncio.current_task())
+        try:
+            return await self._local_command(text,allow_search,output_client,speak)
+        finally:
+            self._direct_reply_owner.reset(token)
+
+    async def _local_command(self, text, allow_search=True, output_client=None, speak=False):
         """Narrow deterministic commands remain usable without online reasoning."""
         clean = text.strip().strip('“”"')
+        if await self.continuity_commands.run(clean):return True
         if not hasattr(self,'capability_commands'):
             from .capability_commands import CapabilityCommands
             self.capability_commands=CapabilityCommands(self)
@@ -221,7 +323,7 @@ class Runtime:
             self.broadcast({'type':'workspace_open'})
             self.message('assistant',f"There are {len(result.get('files',[]))} uploaded files available in your workspace, sir." if result.get('ok') else result['error'])
             self.set_state('IDLE');return True
-        if clean.lower().rstrip('.!') in {'confirm','yes confirm','allow the capture','approve','yes','yeah','continue'}:
+        if clean.lower().rstrip('.!') in {'confirm','yes confirm','allow the capture','approve','yes','yeah'}:
             pending=[key for key,value in self.tools.pending.items() if value['expires']>time.monotonic()]
             if len(pending)==1:
                 self.message('user',text)
@@ -249,13 +351,15 @@ class Runtime:
             return True
         elif memory:
             self.message('user', text)
-            result = self.memory.remember(memory[1], authorized=True)
+            result = self.memory_operation('remember', memory[1], authorized=True)
             self.report_memory_result(result)
             return True
         elif recall:
             self.message('user', text)
-            result = self.memory.search(recall[1])
-            if result['count']:
+            result = self.memory_operation('search', recall[1])
+            if not result.get('ok'):
+                answer = result.get('error', 'Memory is unavailable.')
+            elif result['count']:
                 match = result['matches'][0]
                 answer = f"I found {result['total']} memory match{'es' if result['total'] != 1 else ''}. The closest says, {match['text']}."
             else:
@@ -437,6 +541,9 @@ class Runtime:
             return
         if result.get('analysis'):
             answer=result['analysis']
+        elif name in MEMORY_SCHEMAS:
+            answer=memory_summary(name,result)
+            self.broadcast({'type':'continuity_result','tool':name,'data':result})
         elif name == 'screen_capture':
             answer='The screen image was captured locally, sir. It has not been sent for analysis.'
             self.broadcast({'type':'screen_preview','available':True})
@@ -484,6 +591,7 @@ class Runtime:
         self.broadcast({'type':'analysis_progress','client_id':output_client,'stage':'processing','tool':name})
         try:
             result=await self.tools.confirm(confirmation_id)
+            self.continuity_tool(name, result)
             image_data=result.pop('image_data',None)
             question=pending.get('analysis')
             if result.get('ok') and question:
@@ -563,8 +671,10 @@ class Runtime:
                     queue.get_nowait()
                 queue.put_nowait({"type": "disconnect", "reason": "Client could not keep up."})
 
-    def message(self, role, text):
-        if role=='user':self.authorize_delegation(text)
+    def message(self, role, text, *, capture_memory=True):
+        if role=='user':
+            self.authorize_delegation(text)
+            if capture_memory:self.capture_user_evidence(text)
         self.message_id += 1
         self.messages.append({"id": self.message_id, "role": role, "text": text[:12000]})
         self.messages = self.messages[-40:]
@@ -590,7 +700,7 @@ class Runtime:
         self.graph = {**self.graph, "mode": "overview", "revision": self.graph["revision"] + 1}
         return await self.refresh()
 
-    async def handle_tool_call(self, name, arguments):
+    async def handle_tool_call(self, name, arguments, *, memory_online=True):
         call_id=str(uuid.uuid4())
         started=time.monotonic()
         self.session_log.write('tool.started',call_id=call_id,tool=name,
@@ -598,7 +708,9 @@ class Runtime:
         self.audit_event('tool', 'requested', tool=name)
         self.set_state("EXECUTING", current_tool=name)
         try:
-            result = await self.tools.execute(name, arguments)
+            result = (self.tools.continuity.execute(name, arguments, online=False)
+                      if name in MEMORY_SCHEMAS and not memory_online
+                      else await self.tools.execute(name, arguments))
         except asyncio.CancelledError:
             self.session_log.write('tool.cancelled',call_id=call_id,tool=name,elapsed_ms=round((time.monotonic()-started)*1000))
             raise
@@ -606,8 +718,11 @@ class Runtime:
             try: self.broadcast({'type':'knowledge_filter','query':arguments['query']})
             except Exception: pass  # Cosmetic failure must never discard context.
         self.audit_event('tool', 'awaiting_confirmation' if result.get('confirmation_required') else 'succeeded' if result.get('ok') else 'failed', tool=name)
+        self.continuity_tool(name, result)
         self.session_log.write('tool.result', call_id=call_id, elapsed_ms=round((time.monotonic()-started)*1000), tool=name, status=result.get('status'), ok=result.get('ok'),
-                               code=result.get('code'), error=result.get('error'), action=arguments.get('action') if isinstance(arguments,dict) else None, confirmation_required=result.get('confirmation_required'))
+                               code=result.get('code'), error=result.get('error'), action=arguments.get('action') if isinstance(arguments,dict) else None, confirmation_required=result.get('confirmation_required'),
+                               result_count=len(result['items']) if name in MEMORY_SCHEMAS and isinstance(result.get('items'),list) else None,
+                               truncated=result.get('truncated'))
         if not hasattr(self,'capability_commands'):
             from .capability_commands import CapabilityCommands
             self.capability_commands=CapabilityCommands(self)
@@ -666,5 +781,6 @@ class Runtime:
         self.broadcast({"type": "interrupt", "speech_id": self.state["speech_id"]})
 
     def close_session_log(self):
+        self.memory_operation('consolidate', session_id=self.session_id)
         self.session_log.close()
 

@@ -1,12 +1,30 @@
 import {selectMicrophone} from './devices.js';
 export class BrowserAudio {
-  constructor(send){this.send=send;this.sources=new Set();this.next=0;this.speechId=-1;this.turnDone=false;this.capturing=false;this.monitoring=false;this.generation=0;this.playbackTimer=null;}
+  constructor(send){this.send=send;this.sources=new Set();this.next=0;this.speechId=-1;this.minimumSpeechId=0;this.turnDone=false;this.capturing=false;this.monitoring=false;this.generation=0;this.playbackTimer=null;}
   async initialize(){
-    if(!this.context){this.context=new AudioContext({sampleRate:16000});await this.context.audioWorklet.addModule('/assets/pcm-worklet.js');}
+    try{
+    // Use the output device's native rate. Some Windows drivers reject switching
+    // a 16 kHz context to an otherwise valid speaker. The capture worklet already
+    // converts input to 16 kHz; provider PCM buffers carry their own sample rate.
+    if(!this.context||this.context.state==='closed'){this.context=new AudioContext();this.workletReady=this.context.audioWorklet.addModule('/assets/pcm-worklet.js');}
+    await this.workletReady;
     await this.context.resume();
     if(this.context.state!=='running')throw new Error('Audio playback is blocked by the browser.');
     const sink=localStorage.getItem('lumina.speaker');
-    if(this.context.setSinkId)await this.context.setSinkId(!sink||sink==='default'?'':sink);
+    if(this.context.setSinkId){
+      try{await this.context.setSinkId(!sink||sink==='default'?'':sink);}
+      catch(error){
+        const explanation={NotFoundError:'The saved speaker is unavailable to this window. Open Settings to enable device access and choose your output, or choose Windows default output.',NotAllowedError:'Access to the selected speaker was not granted. Choose audio output in Settings.',AbortError:'The selected speaker could not start. Check the device and choose it again in Settings.'}[error.name]||'The selected speaker could not initialize. Check audio output in Settings.';
+        const failure=new Error(explanation);failure.name=error.name;throw failure;
+      }
+    }else if(sink&&sink!=='default')throw Error('This browser cannot use the selected speaker. Choose Windows default output in Settings.');
+    }catch(error){
+      // Device discovery may change after a permission prompt. A failed context
+      // must not retain its old device view or poison the next speaking turn.
+      this.interrupt();this.stopCapture();
+      await this.context?.close().catch(()=>{});this.context=null;this.workletReady=null;
+      throw error;
+    }
   }
   async prepareMicrophone(){
     if(this.media)return;
@@ -24,11 +42,12 @@ export class BrowserAudio {
   startCapture(){if(this.monitoring){for(const chunk of this.preRoll||[])this.send(chunk);this.preRoll=[];}else this.worklet?.port.postMessage('reset');this.capturing=true;}
   async finishCapture(){if(this.worklet&&this.capturing){await new Promise(resolve=>{this.flushDone=resolve;this.worklet.port.postMessage('flush');setTimeout(resolve,200);});}this.capturing=false;if(!this.monitoring)this.stopCapture();}
   stopCapture(){this.captureGeneration=(this.captureGeneration||0)+1;this.capturing=false;this.media?.getTracks().forEach(t=>t.stop());this.input?.disconnect();this.worklet?.disconnect();this.silence?.disconnect();this.media=null;this.onLevel?.(null);}
-  interrupt(){this.generation++;clearTimeout(this.playbackTimer);for(const source of this.sources){source.onended=null;try{source.stop();}catch{}}this.sources.clear();this.next=0;this.turnDone=false;this.speechId=-1;}
+  interrupt(id){if(Number.isFinite(id))this.minimumSpeechId=Math.max(this.minimumSpeechId,id);this.generation++;clearTimeout(this.playbackTimer);for(const source of this.sources){source.onended=null;try{source.stop();}catch{}}this.sources.clear();this.next=0;this.turnDone=false;this.speechId=-1;}
   async play(event){
+    if(event.speech_id<this.minimumSpeechId||event.speech_id<this.speechId)return;
     if(!this.context||this.context.state!=='running')throw new Error('Click Speak or Send to enable audio.');
     clearTimeout(this.playbackTimer);
-    if(this.speechId!==event.speech_id){this.interrupt();this.speechId=event.speech_id;}
+    if(this.speechId!==event.speech_id){this.interrupt(event.speech_id);this.speechId=event.speech_id;}
     this.turnDone=false;
     const bytes=Uint8Array.from(atob(event.data),c=>c.charCodeAt(0));const pcm=new DataView(bytes.buffer);
     const buffer=this.context.createBuffer(1,bytes.length/2,event.sample_rate);const data=buffer.getChannelData(0);

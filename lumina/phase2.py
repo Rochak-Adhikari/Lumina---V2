@@ -143,6 +143,18 @@ class PhaseTwo:
     async def _run(self):
         while True:
             await self.automation.tick()
+            memory=getattr(self.registry,'memory',None)
+            if memory is not None and hasattr(memory,'maintenance'):
+                try:
+                    # Bounded local consolidation shares the existing scheduler.
+                    # Await shielded work on cancellation before closing SQLite.
+                    job=asyncio.create_task(asyncio.to_thread(memory.maintenance))
+                    try:await asyncio.shield(job)
+                    except asyncio.CancelledError:
+                        await job
+                        raise
+                except (OSError,ValueError):pass
+                except Exception:pass  # Optional memory cannot stop automation.
             await asyncio.sleep(2)
 
     async def close(self):

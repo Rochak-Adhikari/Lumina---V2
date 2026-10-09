@@ -8,8 +8,22 @@ STOP={'the','a','an','is','of','in','to','and','how','what','does','my','about',
 def words(value):return set(re.findall(r"[a-z0-9]+",str(value).lower()))-STOP
 
 class KnowledgeGraph:
-    def __init__(self,path):self.path=Path(path)
-    def read(self):
+    def __init__(self,path,memory=None):self.path=Path(path);self.memory=memory
+    def _memory_available(self):
+        # UnavailableMemory exposes failure callables through __getattr__, so
+        # hasattr(memory, 'repo') does not establish a working repository.
+        return callable(getattr(getattr(self.memory,'repo',None),'rows',None))
+    def source(self,requested='auto'):
+        if requested not in {'auto','notes','continuity'}:raise ValueError('Unknown graph source.')
+        if requested!='auto':return requested
+        if self._memory_available() and self.memory.repo.rows("SELECT key FROM meta WHERE key LIKE 'bootstrap:latest:%' LIMIT 1"):
+            return 'continuity'
+        return 'notes'
+    def read(self,source='auto',online=False):
+        if self.source(source)=='continuity':
+            if not self._memory_available():return {'nodes':[],'edges':[],'hyperedges':[],'unavailable':True,'source':'continuity'}
+            from .continuity.graph import MemoryGraphProjection
+            return MemoryGraphProjection(self.memory).read(online=online)
         if not self.path.is_file():return {'nodes':[],'edges':[],'hyperedges':[],'unavailable':True}
         if self.path.stat().st_size>20_000_000:raise ValueError('Graph file exceeds 20 MB.')
         data=json.loads(self.path.read_text('utf-8'))
@@ -17,11 +31,11 @@ class KnowledgeGraph:
         if len(ids)!=len(nodes):raise ValueError('Duplicate concept IDs.')
         edges=data.get('edges',data.get('links',[]))
         if any(str(e['source']) not in ids or str(e['target']) not in ids for e in edges):raise ValueError('Graph contains dangling edges.')
-        return {**data,'nodes':nodes,'edges':edges,'hyperedges':data.get('hyperedges',[])}
+        return {**data,'nodes':nodes,'edges':edges,'hyperedges':data.get('hyperedges',[]),'source':'notes'}
     def query(self,question,limit=75):
         if not isinstance(question,str) or not question.strip():raise ValueError('A graph question is required.')
         if not isinstance(limit,int) or isinstance(limit,bool) or not 1<=limit<=75:raise ValueError('Graph context limit must be between 1 and 75.')
-        data=self.read();nodes={str(n['id']):n for n in data['nodes']};tokens=words(question)
+        data=self.read(online=True) if self.memory else self.read();nodes={str(n['id']):n for n in data['nodes']};tokens=words(question)
         def score(n):
             return len(tokens & words(' '.join(str(n.get(k,'')) for k in ('label','aliases','source_file','source_files','source_location'))))
         seeds=sorted((i for i,n in nodes.items() if score(n)),key=lambda i:(-score(nodes[i]),i))
