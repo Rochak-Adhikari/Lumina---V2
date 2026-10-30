@@ -1,0 +1,74 @@
+{
+ "viewport": "390x844 mobile",
+ "cpuThrottle": 4,
+ "loadWallMs": 5691,
+ "load": {
+  "ttfb": 111,
+  "domContentLoaded": 3122,
+  "load": 3285,
+  "first-paint": 3348,
+  "first-contentful-paint": 3348,
+  "lcp": 3348,
+  "worldFirstFrame": 5201,
+  "worldReady": 5677,
+  "tier": "low",
+  "dpr": 1,
+  "gpu": "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "transferKB": {
+   "html": 6,
+   "js": 159,
+   "css": 9,
+   "fonts": 95,
+   "total": 270
+  },
+  "requests": 9,
+  "failed": [],
+  "largest": [
+   "World-CkP8jGJW.js 140 KB",
+   "geist-latin-wght-normal-BgDaEnEv.woff2 29 KB",
+   "geist-mono-latin-wght-normal-XN7g48iV.woff2 23 KB",
+   "instrument-serif-latin-400-italic-DKMiL14s.woff2 22 KB",
+   "instrument-serif-latin-400-normal-DnYpCC2O.woff2 21 KB"
+  ]
+ },
+ "scrollPasses": [
+  {
+   "frames": 840,
+   "avgMs": 24.1,
+   "p50": 17.5,
+   "p95": 52.4,
+   "p99": 69.9,
+   "over33": 208,
+   "over50": 46,
+   "downgrades": 0,
+   "dprAfter": 1
+  },
+  {
+   "frames": 840,
+   "avgMs": 24.8,
+   "p50": 17.5,
+   "p95": 52.5,
+   "p99": 70.6,
+   "over33": 193,
+   "over50": 67,
+   "downgrades": 0,
+   "dprAfter": 1
+  },
+  {
+   "frames": 840,
+   "avgMs": 23.6,
+   "p50": 17.5,
+   "p95": 35.1,
+   "p99": 52.7,
+   "over33": 180,
+   "over50": 35,
+   "downgrades": 0,
+   "dprAfter": 1
+  }
+ ],
+ "heapMB": {
+  "before": 5.3,
+  "after3Passes": 5.4
+ },
+ "idleRenderFps": 15.7
+}

@@ -12,7 +12,7 @@ from .policy import now
 
 CANONICAL = {'entities','events','facts','evidence','episodes','decisions','goals','commitments',
              'open_loops','relationships','memory_candidates','predictions','behavior_patterns'}
-WRITABLE = CANONICAL | {'current_state','episode_events','legacy_memory_map','meta'}
+WRITABLE = CANONICAL | {'current_state','episode_events','legacy_memory_map','meta','memory_suppressions'}
 
 
 class Repository:

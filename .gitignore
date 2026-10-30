@@ -1,89 +1,137 @@
-.venv/
-__pycache__/
-.pytest_cache/
+# ==============================================================================
+# LUMINA - .gitignore
+# Clean workspace configuration for GitHub & multi-machine development.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SECRETS & CREDENTIALS (Never commit to GitHub)
+# ------------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
+.gemini-key
 *credentials*.json
 *oauth*.json
-*.dpapi
 *token*.json
-inbox.sqlite3*
-.gemini-key
+*client_secret*.json
+*.dpapi
+config/api_keys.json
+config/certs/
+config/whatsapp_web/
+
+# ------------------------------------------------------------------------------
+# 2. LOCAL MACHINE CONFIGURATION & RUNTIME STATE
+# ------------------------------------------------------------------------------
+# Local machine configuration containing local paths and private keys
 lumina.toml
-*.log
-artifacts/
+!lumina.example.toml
 
-debug_dump
-# Personal notes and derived knowledge are private.
-notes/
-graphify-out/
-docs
-Uploads/
-tests
-LuminaBrowserProfile
-sources/
-sources
-C:\Users\Administrator\Documents\ChatGPT\LUNA 3\sources
-dist/
-desktop/bin/
-desktop/obj/
-desktop/lumina.ico
-camera-helper/bin/
-camera-helper/obj/
+# Active runtime state and synchronization files
+.lumina-control-unresolved.json
+.lumina-file-controller/
 lumina-automation.json*
+lumina-reminders.json*
+last-session.json
 
-# ── MARK LIII — what never belongs in the repository ──────────────────────────
-# Everything listed here is created by the app on first run. A fresh clone with
-# none of it present boots straight to the setup screen, which is the intended
-# first experience — so nothing here needs to be committed, and some of it must
-# never be.
-
-# ── Secrets. Committing any of these publishes them. ──────────────────────────
-config/api_keys.json          # your Gemini API key, plus per-plugin credentials
-config/certs/                 # the dashboard's TLS private key and certificate
-config/whatsapp_web/          # a LINKED WhatsApp session — committing it hands
-                              # somebody your WhatsApp account, not just a key
-**/token*.json                # Google OAuth tokens (Gmail / Calendar plugins)
-**/client_secret*.json        # Google OAuth client secrets
-*credentials*.json
-.env
-.env.*
-
-# ── Personal data the assistant accumulates about you ─────────────────────────
+# Local databases and locks
+*.sqlite3*
+*.db
+*.db-*
+*.lock
 memory/long_term.json
 memory/*.db
-*.sqlite3
-*.sqlite3-wal
-*.sqlite3-shm
-*.sqlite3.before-continuity-*.backup
 
-# ── Python build noise ────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# 3. PERSONAL KNOWLEDGE, PRIVATE NOTES & LOCAL BROWSER PROFILES
+# ------------------------------------------------------------------------------
+notes/
+graphify-out/
+Uploads/
+LuminaBrowserProfile/
+
+# ------------------------------------------------------------------------------
+# 4. PYTHON BUILD NOISE & VIRTUAL ENVIRONMENTS
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 build/
 dist/
 *.egg-info/
 .eggs/
+.pytest_cache/
 
-# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
 env/
 ENV/
+.venv-transferred-*/
+pip/
 
-# ── Editors and operating systems ─────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# 5. .NET / C# COMPILATION OUTPUT
+# ------------------------------------------------------------------------------
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+desktop/lumina.ico
+
+# ------------------------------------------------------------------------------
+# 6. LOGS, ARTIFACTS & SCRATCHPADS
+# ------------------------------------------------------------------------------
+*.log
+logs/
+debug.log
+debug_dump/
+artifacts/
+scratch/
+downloads/
+screenshots/
+workspace-panel-check.png
+typescript
+
+# ------------------------------------------------------------------------------
+# 7. HISTORICAL RECOVERY, ARCHIVES & STANDALONE SITES
+# ------------------------------------------------------------------------------
+archive/
+.recovery/
+LUMINA-Recovered/
+LUMINA-Recovery-Data/
+sources/
+*-test-data*/
+*-native-data*/
+tests/
+
+# ------------------------------------------------------------------------------
+# 8. EDITORS & OPERATING SYSTEM JUNK
+# ------------------------------------------------------------------------------
 .vscode/
 .idea/
+.claude/
 *.swp
+*.swo
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ── Runtime output ────────────────────────────────────────────────────────────
-*.log
-logs/
-downloads/
-screenshots/
+# ------------------------------------------------------------------------------
+# 9. EXPLICIT PRESERVATIONS FOR MULTI-MACHINE CLONING (Needed on other PC)
+# ------------------------------------------------------------------------------
+!.env.example
+!lumina.example.toml
+!requirements.txt
+!requirements-dev.txt
+!requirements-phase1.txt
+!pytest.ini
+!start.ps1
+!start-recovered.ps1
+!RECOVERY-INTEGRATION.md
+!docs/
+!docs/**
+!benchmarks/
+!benchmarks/**

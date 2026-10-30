@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090b"><title>LUMINA — Earth prototype (P0.4)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./earth-prototype.css">
+  <script src="./bootstrap.js" defer></script>
+  <script type="module" src="./earth-prototype.js"></script>
+</head>
+<body class="earth-standalone">
+  <header class="earth-bar">
+    <a href="/" class="earth-back">◇ LUMINA</a>
+    <span>EARTH · P0.4 PROTOTYPE</span>
+    <div class="earth-toolbar">
+      <button type="button" id="earth-toggle-daynight" class="earth-btn-toggle" aria-pressed="false" title="Toggle solar illumination and night side terminator">
+        <span class="earth-toggle-icon">☀</span>
+        <span id="earth-toggle-label" class="earth-toggle-label">Day/Night: OFF</span>
+      </button>
+      <button type="button" id="earth-toggle-atlas" class="earth-btn-toggle" aria-pressed="false" title="Toggle Atlas saved places panel">
+        <span class="earth-toggle-icon">📌</span>
+        <span id="earth-atlas-label" class="earth-toggle-label">Atlas</span>
+      </button>
+    </div>
+    <span class="earth-hint">Drag to rotate · Scroll or +/− to zoom · Arrow keys</span>
+  </header>
+  <main id="earth-stage" class="earth-stage" data-earth-state="idle">
+    <p id="earth-status" class="earth-status" role="status" aria-live="polite">Starting…</p>
+
+    <!-- Search Overlay -->
+    <div class="earth-search-container" id="earth-search-container">
+      <form class="earth-search-form" id="earth-search-form" role="search" aria-label="Search places">
+        <input type="search" id="earth-search-input" class="earth-search-input" placeholder="Search city or place…" autocomplete="off" spellcheck="false" maxlength="200" aria-autocomplete="list" aria-controls="earth-search-results">
+        <button type="submit" id="earth-search-submit" class="earth-search-submit" aria-label="Submit search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+        <button type="button" id="earth-search-clear" class="earth-search-clear" aria-label="Clear search" hidden>×</button>
+      </form>
+      <div id="earth-search-feedback" class="earth-search-feedback" role="status" aria-live="polite" hidden></div>
+      <ul id="earth-search-results" class="earth-search-results" role="listbox" aria-label="Location search results" hidden></ul>
+    </div>
+
+    <!-- Location Information Panel & Weather Card -->
+    <div id="earth-info-card" class="earth-info-card" hidden aria-live="polite">
+      <button type="button" class="earth-info-close" id="earth-info-close" aria-label="Close location card">×</button>
+      <h2 class="earth-info-title" id="earth-info-title"></h2>
+      <p class="earth-info-sub" id="earth-info-sub"></p>
+      <div class="earth-info-details" id="earth-info-details"></div>
+      <!-- Local Time Intelligence (P1.6) -->
+      <div id="earth-local-time-wrap" class="earth-local-time-wrap" hidden>
+        <div class="earth-local-time-main">
+          <span class="earth-local-time-clock" id="earth-local-time-clock">--:--:--</span>
+          <span class="earth-local-time-period" id="earth-local-time-period"></span>
+        </div>
+        <div class="earth-local-time-meta">
+          <span id="earth-local-time-date" class="earth-local-time-date"></span>
+          <span class="earth-local-time-divider" aria-hidden="true">·</span>
+          <span id="earth-local-time-tz" class="earth-local-time-tz"></span>
+        </div>
+      </div>
+      <div id="earth-weather-container" class="earth-weather-container"></div>
+      <button type="button" id="earth-save-location-btn" class="earth-btn-sm earth-btn-primary" style="margin-top: 8px; width: 100%;" disabled>Save to Atlas</button>
+      <div class="earth-info-attribution" id="earth-info-attribution">Geocoding: Open-Meteo / GeoNames (CC BY 4.0)</div>
+    </div>
+
+    <!-- Atlas Panel (P1.5 Saved Places & P1.6 Search History) -->
+    <aside id="earth-atlas-panel" class="earth-atlas-panel" hidden aria-label="Atlas saved places">
+      <div class="earth-atlas-header">
+        <div class="earth-atlas-title-row">
+          <span class="earth-atlas-title">Atlas</span>
+          <span id="earth-atlas-count" class="earth-atlas-count-badge">0</span>
+        </div>
+        <div class="earth-atlas-header-actions">
+          <button type="button" id="earth-atlas-new-btn" class="earth-btn-sm earth-btn-secondary" title="Add place manually">+ New</button>
+          <button type="button" id="earth-atlas-refresh" class="earth-atlas-header-btn" title="Refresh places" aria-label="Refresh places">↻</button>
+          <button type="button" id="earth-atlas-close" class="earth-atlas-header-btn" title="Close Atlas" aria-label="Close Atlas">×</button>
+        </div>
+      </div>
+
+      <!-- Atlas Tabs (P1.6) -->
+      <div class="earth-atlas-tabs" role="tablist" aria-label="Atlas sections">
+        <button type="button" id="earth-atlas-tab-saved" class="earth-atlas-tab active" role="tab" aria-selected="true" aria-controls="earth-atlas-saved-section">
+          <span>Saved Places</span>
+          <span id="earth-atlas-saved-badge" class="earth-atlas-tab-badge">0</span>
+        </button>
+        <button type="button" id="earth-atlas-tab-history" class="earth-atlas-tab" role="tab" aria-selected="false" aria-controls="earth-atlas-history-section">
+          <span>Recent Searches</span>
+          <span id="earth-atlas-history-badge" class="earth-atlas-tab-badge">0</span>
+        </button>
+      </div>
+
+      <!-- Saved Places Section -->
+      <div id="earth-atlas-saved-section" class="earth-atlas-section">
+        <!-- Loading state -->
+        <div id="earth-atlas-loading" class="earth-atlas-loading" hidden>
+          <span class="earth-atlas-spinner"></span>
+          <span>Loading saved places…</span>
+        </div>
+
+        <!-- Error state -->
+        <div id="earth-atlas-error" class="earth-atlas-error" hidden>
+          <p id="earth-atlas-error-msg" class="earth-atlas-error-msg"></p>
+          <button type="button" id="earth-atlas-retry" class="earth-btn-sm earth-btn-secondary">Retry</button>
+        </div>
+
+        <!-- Form drawer (Create / Edit) -->
+        <div id="earth-atlas-form-wrap" class="earth-atlas-form-wrap" hidden>
+          <h3 id="earth-atlas-form-title" class="earth-atlas-form-title">Save Place to Atlas</h3>
+          <form id="earth-atlas-form" class="earth-atlas-form">
+            <label class="earth-atlas-label">
+              Name <span class="required">*</span>
+              <input type="text" id="earth-atlas-name" class="earth-atlas-input" placeholder="e.g. Kathmandu, Base Camp" required maxlength="120" autocomplete="off">
+            </label>
+            <label class="earth-atlas-label">
+              Category
+              <select id="earth-atlas-category" class="earth-atlas-select">
+                <option value="city">City</option>
+                <option value="mountain">Mountain</option>
+                <option value="landmark">Landmark</option>
+                <option value="island">Island</option>
+                <option value="water">Water / Ocean</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label class="earth-atlas-label">
+              Description / Notes
+              <textarea id="earth-atlas-desc" class="earth-atlas-textarea" placeholder="Optional notes or memories…" rows="2" maxlength="500"></textarea>
+            </label>
+            <div class="earth-atlas-coords-row">
+              <span class="earth-atlas-coords-label">Coordinates:</span>
+              <span id="earth-atlas-coords" class="earth-atlas-coords-val">—</span>
+            </div>
+            <div id="earth-atlas-form-feedback" class="earth-atlas-form-feedback" hidden></div>
+            <div class="earth-atlas-form-actions">
+              <button type="submit" id="earth-atlas-submit" class="earth-btn-sm earth-btn-primary">Save Place</button>
+              <button type="button" id="earth-atlas-cancel" class="earth-btn-sm earth-btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Empty state -->
+        <div id="earth-atlas-empty" class="earth-atlas-empty" hidden>
+          <div class="earth-atlas-empty-icon">📍</div>
+          <p class="earth-atlas-empty-title">No saved places yet</p>
+          <p class="earth-atlas-empty-sub">Search for a location or pick a spot on the globe, then click "Save to Atlas".</p>
+          <button type="button" id="earth-atlas-empty-save" class="earth-btn-sm earth-btn-primary" disabled>Save Selected Location</button>
+        </div>
+
+        <!-- Saved Places List -->
+        <div id="earth-atlas-list" class="earth-atlas-list" role="listbox" aria-label="Saved waypoints list"></div>
+
+        <!-- Pagination -->
+        <div id="earth-atlas-pagination" class="earth-atlas-pagination" hidden>
+          <span id="earth-atlas-page-info" class="earth-atlas-page-info">1–10 of 10</span>
+          <div class="earth-atlas-page-btns">
+            <button type="button" id="earth-atlas-prev" class="earth-btn-sm earth-btn-secondary" disabled>Previous</button>
+            <button type="button" id="earth-atlas-next" class="earth-btn-sm earth-btn-secondary" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Searches Section (P1.6) -->
+      <div id="earth-atlas-history-section" class="earth-atlas-section" hidden>
+        <div class="earth-history-toolbar">
+          <span class="earth-history-caption">Recent Searches</span>
+          <button type="button" id="earth-history-clear-btn" class="earth-btn-sm earth-btn-danger-outline" title="Clear all search history" disabled>Clear All</button>
+        </div>
+
+        <!-- Clear Confirmation Banner -->
+        <div id="earth-history-confirm" class="earth-history-confirm" hidden>
+          <span class="earth-history-confirm-text">Clear all search history?</span>
+          <div class="earth-history-confirm-actions">
+            <button type="button" id="earth-history-confirm-btn" class="earth-btn-sm earth-btn-danger">Clear All</button>
+            <button type="button" id="earth-history-cancel-btn" class="earth-btn-sm earth-btn-secondary">Cancel</button>
+          </div>
+        </div>
+
+        <!-- History Loading State -->
+        <div id="earth-history-loading" class="earth-atlas-loading" hidden>
+          <span class="earth-atlas-spinner"></span>
+          <span>Loading search history…</span>
+        </div>
+
+        <!-- History Empty State -->
+        <div id="earth-history-empty" class="earth-atlas-empty" hidden>
+          <div class="earth-atlas-empty-icon">🕒</div>
+          <p class="earth-atlas-empty-title">No search history yet</p>
+          <p class="earth-atlas-empty-sub">Search for cities, mountains, or landmarks and they will appear here for fast revisit.</p>
+        </div>
+
+        <!-- History List -->
+        <div id="earth-history-list" class="earth-history-list" role="listbox" aria-label="Recent searches list"></div>
+      </div>
+    </aside>
+  </main>
+  <footer class="earth-credit">Imagery: NASA Goddard Space Flight Center / Blue Marble (public domain) · Geocoding & Weather: Open-Meteo / GeoNames (CC BY 4.0). Rendered locally with three.js (MIT).</footer>
+</body>
+</html>

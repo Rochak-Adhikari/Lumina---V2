@@ -253,6 +253,23 @@ class ContinuationContext(DictModel):
 
 
 @dataclass
+class MemorySuppression(DictModel):
+    id: str = field(default_factory=lambda: str(uuid4()))
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+    subject_canonical_key: str = ""
+    predicate: str = ""
+    object_fingerprint: str = ""
+    original_fact_id: str | None = None
+    reason: str = ""
+    mode: str = "invalidated"
+    status: str = "active"
+    overridden_at: str | None = None
+    override_event_id: str | None = None
+
+
+
+@dataclass
 class MemoryProposal(DictModel):
     kind: str = "fact"
     subject: str = "user"
@@ -267,3 +284,4 @@ class MemoryProposal(DictModel):
     data: dict[str, Any] = field(default_factory=dict)
     reason: str = "proposal"
     supersedes: str | None = None
+    resurrect: bool = False

@@ -1,0 +1,49 @@
+{
+  "time": "2026-10-28T15:18:52.164275+05:45",
+  "checks": {
+    "unique_milestone_ids": true,
+    "all_dependencies_exist": true,
+    "acyclic_dependencies": true,
+    "explicit_exits_effort_status": true,
+    "exactly_eight_phases": true,
+    "phase_specs_and_handoffs": true,
+    "twenty_fields_per_phase": true,
+    "all_completion_classes_mapped": true,
+    "thirty_unique_contract_ids": true,
+    "status_next_milestone_matches_graph": true,
+    "local_links_resolve": true,
+    "selected_sources_unchanged": true,
+    "original_plans_unchanged": true,
+    "branch_head_unchanged": true,
+    "no_initial_status_entry_removed": true,
+    "new_status_entries_planning_only": true,
+    "tracked_diff_summary_unchanged": true,
+    "schedule_matches_register": true
+  },
+  "all_checks_pass": true,
+  "milestone_ids": [
+    "P0.1",
+    "P1.1",
+    "P1.2",
+    "P2.1",
+    "P2.2",
+    "P2.3",
+    "P3.1",
+    "P3.2",
+    "P4.1",
+    "P4.2",
+    "P5.1",
+    "P5.2",
+    "P6.1",
+    "P6.2",
+    "P7.1",
+    "P7.2"
+  ],
+  "remaining_active_days": [
+    30,
+    54
+  ],
+  "broken_links": [],
+  "source_drift": [],
+  "note": "Document/static preservation validation only. No app tests, native control or inference executed."
+}

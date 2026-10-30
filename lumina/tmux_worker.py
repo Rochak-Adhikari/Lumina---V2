@@ -1,4 +1,5 @@
 """Persistent MSYS2 tmux worker with explicit, identity-checked cancellation."""
+from .control_authority import blocked_effect
 import asyncio
 import hashlib
 import json
@@ -26,6 +27,7 @@ class TmuxWorker:
         self.storage.mkdir(parents=True,exist_ok=True)
         self.registry=self.storage/'sessions.json'
         self.records=json.loads(self.registry.read_text()) if self.registry.exists() else {}
+    @blocked_effect
     async def command(self,*args,input=None,check=True):
         env=build_worker_environment(self.root);env['MSYS2_ARG_CONV_EXCL']='*';env['MSYS']='noglob'
         p=await asyncio.create_subprocess_exec(str(self.msys/'usr/bin/tmux.exe'),*args,env=env,
@@ -92,6 +94,7 @@ class TmuxWorker:
             raise RuntimeError('Tracked tmux session identity changed; refusing lifecycle operation.')
         return exact[0][2]
 
+    @blocked_effect
     async def remove(self,session_id):
         """Forget an inactive record; never delete agent files or logs."""
         async with self.lock:
@@ -137,6 +140,7 @@ class TmuxWorker:
         candidate=Path(output.decode(errors='replace').strip())/'WindowsTerminal.exe'
         return str(candidate) if candidate.is_file() else None
 
+    @blocked_effect
     async def attach(self,record):
         wt=await self.terminal_executable()
         if not wt:raise RuntimeError('Windows Terminal is unavailable; detached session preserved.')
@@ -190,6 +194,7 @@ class TmuxWorker:
                 cwd=(await self.command('-S',record['socket'],'display-message','-p','-t',record['pane'],'#{pane_current_path} ')).strip()
                 if cwd.rstrip('/').casefold()==record['cwd'].rstrip('/').casefold() and self.ready(await self.tail(record)):return
                 await asyncio.sleep(.4)
+    @blocked_effect
     async def deliver(self,record,message):
         if any(ord(c)<32 and c not in '\n\r\t' for c in message):
             raise ValueError('Terminal control characters are not permitted in briefs.')
@@ -214,6 +219,7 @@ class TmuxWorker:
             if attempt==3 and re.search(r'(?m)^\s*[❯>]\s*'+re.escape(message[:50]),text):
                 await self.command('-S',record['socket'],'send-keys','-t',record['pane'],'Enter')
         raise RuntimeError('Brief submission could not be verified; session preserved for manual inspection.')
+    @blocked_effect
     async def run(self,session_id,message,workspace=None,*,launch_only=False):
         async with self.lock:
             if session_id not in self.records:
@@ -279,6 +285,7 @@ class TmuxWorker:
                 self._state(session_id,'WAITING')
                 return WorkerResult(tail,f"Agent {record['name']} has answered; its latest pane is available for summary.",True)
             await asyncio.sleep(1)
+    @blocked_effect
     async def send_message(self,session_id,message):
         async with self.lock:
             record=self.records[session_id]
@@ -301,6 +308,7 @@ class TmuxWorker:
                 return await asyncio.to_thread(ProcessTree,int(fields[3]))
         raise RuntimeError('Cannot map worker pane to its Windows process; cancellation was not performed.')
 
+    @blocked_effect
     async def cancel(self,session_id):
         async with self.lock:
             if session_id not in self.records:

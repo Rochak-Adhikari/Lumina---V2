@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from .control_authority import blocked_effect
 
 
 class WorkerLogs:
@@ -58,6 +59,7 @@ class WorkerLogs:
             stream.seek(max(0,path.stat().st_size-100000));data=stream.read(100000)
         return data.decode('utf-8',errors='replace')
 
+    @blocked_effect
     def show(self,wid,env):
         if os.name!='nt':return None
         viewer=subprocess.Popen([sys.executable,str(Path(__file__).with_name('worker_viewer.py')),str(self.directory(wid)),wid],env=env,creationflags=subprocess.CREATE_NEW_CONSOLE)

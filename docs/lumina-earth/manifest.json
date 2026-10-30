@@ -1,0 +1,35 @@
+{
+  "project": "Lumina Earth",
+  "version": "0.1.0",
+  "status": "planning baseline; not repository-verified",
+  "prepared": "2026-10-28",
+  "documents": [
+    "README.md",
+    "01_PRODUCT_REQUIREMENTS.md",
+    "02_FEATURE_CATALOG.md",
+    "03_SYSTEM_ARCHITECTURE.md",
+    "04_FUNCTIONAL_REQUIREMENTS.md",
+    "05_NONFUNCTIONAL_REQUIREMENTS.md",
+    "06_ROADMAP_AND_MILESTONES.md",
+    "07_API_AND_COMMAND_CONTRACTS.md",
+    "08_DATA_MODEL.md",
+    "09_PROVIDER_AND_LICENSING_STRATEGY.md",
+    "10_SECURITY_PRIVACY_AND_SAFETY.md",
+    "11_TEST_AND_ACCEPTANCE_PLAN.md",
+    "12_UX_AND_INTERACTION_SPEC.md",
+    "13_RISK_REGISTER.md",
+    "14_AGENT_IMPLEMENTATION_PROTOCOL.md",
+    "15_DECISION_LOG.md"
+  ],
+  "feature_count": 27,
+  "milestones": [
+    "P0",
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "P7"
+  ]
+}

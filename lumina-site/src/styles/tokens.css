@@ -1,0 +1,58 @@
+/* Lumina — "The Loom of Light" design tokens.
+   Ember = the person's intent. Lumen = Lumina's capabilities. Knot = what is remembered. */
+:root {
+  /* Ground */
+  --ink-0: #07080b;
+  --ink-1: #0b0d12;
+  --ink-2: #10131a;
+  --ink-3: #171b24;
+  --ink-4: #222836;
+  --hair: rgba(226, 230, 242, 0.1);
+  --hair-strong: rgba(226, 230, 242, 0.2);
+
+  /* Type colours (contrast measured against --ink-0) */
+  --paper: #ece7dd; /* 16.6:1 */
+  --paper-dim: #b4b0a7; /* 9.4:1 */
+  --paper-mute: #8a877f; /* 5.6:1 */
+
+  /* Accents — used sparingly */
+  --ember: #ffad5c;
+  --ember-deep: #e5782f;
+  --ember-ink: #1a1007;
+  --lumen: #b9d4ff;
+  --lumen-dim: #7f97c2;
+  --knot: #f3d38b;
+  --verified: #8fd6b0;
+  --alert: #ff8f80;
+
+  /* Type */
+  --font-display: 'Instrument Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-ui: 'Geist Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --step--1: clamp(0.8rem, 0.78rem + 0.1vw, 0.86rem);
+  --step-0: clamp(0.98rem, 0.95rem + 0.15vw, 1.06rem);
+  --step-1: clamp(1.12rem, 1.05rem + 0.35vw, 1.3rem);
+  --step-2: clamp(1.4rem, 1.2rem + 0.9vw, 1.9rem);
+  --step-4: clamp(2.3rem, 1.5rem + 3vw, 4.1rem);
+  --step-6: clamp(3.1rem, 1.6rem + 6.4vw, 8.2rem);
+
+  /* Space & shape */
+  --gutter: clamp(1.25rem, 5vw, 6.5rem);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --header-h: 64px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 640ms;
+}
+
+[data-motion='reduced'] {
+  --dur-1: 0ms;
+  --dur-2: 0ms;
+  --dur-3: 0ms;
+}

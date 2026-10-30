@@ -1,3 +1,4 @@
+from ..control_authority import blocked_effect
 from .base import request,CommunicationError
 
 
@@ -29,6 +30,7 @@ class Telegram:
         if not 1<=len(content)<=4096:raise CommunicationError('invalid_content','Telegram text must contain 1–4096 characters.')
         chat=await self.api('getChat',{'chat_id':destination})
         return {'destination':str(chat['id']),'content':content,'message_id':message_id}
+    @blocked_effect
     async def send(self,destination,content,message_id=''):
         payload={'chat_id':destination,'text':content}
         if message_id:payload['reply_parameters']={'message_id':int(message_id.rsplit(':',1)[1])}

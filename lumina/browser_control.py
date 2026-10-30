@@ -15,6 +15,7 @@ not a sandbox for hostile websites. Inspection never grants network authority.
 Screenshots are returned in memory only; no private content is uploaded.
 """
 from __future__ import annotations
+from .control_authority import blocked_effect
 
 import asyncio
 import base64
@@ -98,18 +99,21 @@ class BrowserController:
                 await self._finish_teardown()
                 raise
             except (TimeoutError, asyncio.TimeoutError):
-                await self._finish_teardown()
+                cleanup = await self._finish_teardown()
+                if not cleanup.get('ok'): return cleanup
                 return self._error('TIMEOUT', 'Browser operation timed out; session was closed.')
             except BrowserError as exc:
                 if action == 'start':await self._finish_teardown()
                 return self._error(exc.code, str(exc), **exc.details)
             except (ImportError, ModuleNotFoundError):
-                await self._finish_teardown()
+                cleanup = await self._finish_teardown()
+                if not cleanup.get('ok'): return cleanup
                 self._state = 'unavailable'
                 return self._error('UNAVAILABLE', 'Playwright is unavailable; no browser was installed.')
             except Exception as exc:
                 # Provider errors can contain private URLs, typed content or credentials.
-                await self._finish_teardown()
+                cleanup = await self._finish_teardown()
+                if not cleanup.get('ok'): return cleanup
                 self._state = 'failed'
                 if action=='start' and any(phrase in str(exc).lower() for phrase in ('processsingleton','profile appears to be in use','opening in existing browser session','user data directory is already in use')):
                     return self._error('PROFILE_BUSY','This browser profile is still in use. Close its existing supervised browser before retrying.',
@@ -124,13 +128,15 @@ class BrowserController:
         return await self.execute('close')
 
     async def _dispatch(self, action, args):
+        if action in ('start', 'new_tab', 'close_tab', 'execute_confirmed'):
+            from .control_authority import denied
+            return denied()
         if action in ('status', 'start', 'close', 'list_tabs', 'new_tab'):
             self._keys(args, set())
             if action == 'status':
                 return self.status()
             if action == 'close':
-                await self._finish_teardown()
-                return _ok('closed')
+                return await self._finish_teardown()
             if action == 'start':
                 return await self._start()
             self._ready()
@@ -181,6 +187,7 @@ class BrowserController:
             raise BrowserError('TAB_NOT_FOUND', 'Choose an open tab ID from this session.')
         return self._tabs[tab_id]
 
+    @blocked_effect
     def _claim_profile(self):
         path = self.resolver.path(self.profile, must_exist=False)
         if path.name.casefold() in ('default', 'user data', 'chrome', 'chromium') or path.name.casefold().startswith('profile '):
@@ -213,6 +220,7 @@ class BrowserController:
         self._profile_path, self._profile_id = path, identity['id']
 
     @staticmethod
+    @blocked_effect
     def _open_windows_profile_lock(path):
         # Exclusive OS handle, deleted on close/crash. A legacy empty sentinel
         # is recoverable only when no other process still holds it open.
@@ -230,6 +238,7 @@ class BrowserController:
             kernel.CloseHandle(handle)
             raise
 
+    @blocked_effect
     async def _launch(self, path):
         from playwright.async_api import async_playwright
         self._driver = await async_playwright().start()
@@ -241,6 +250,7 @@ class BrowserController:
             args=['--disable-extensions', '--disable-background-networking',
                   '--disable-component-update', '--disable-sync', '--no-first-run'])
 
+    @blocked_effect
     async def _start(self):
         if self._context is not None:
             tab_id = next((key for key, page in self._tabs.items() if not page.is_closed()), None)
@@ -491,6 +501,7 @@ class BrowserController:
         return _ok('confirmation_required', confirmation=confirmation,
                    request=json.loads(json.dumps(request)), requires_confirmation=True)
 
+    @blocked_effect
     async def _confirmed(self, args):
         token = args.get('confirmation')
         pending = self._pending.pop(token, None) if isinstance(token, str) else None
@@ -529,6 +540,7 @@ class BrowserController:
             if handle is not None:
                 await handle.dispose()
 
+    @blocked_effect
     async def _navigate(self, page, url):
         self._documents.pop(page.main_frame, None)
         try:
@@ -550,8 +562,8 @@ class BrowserController:
             self._permit = None
 
     async def _finish_teardown(self):
-        # Cancellation cannot leave a late launch/action alive. Repeated cancellation
-        # is deferred until driver stop completes; no detached cleanup task escapes.
+        # Await the cleanup decision even if this caller is cancelled. A decision
+        # of unknown retains handles and does not claim a native process stopped.
         task = asyncio.create_task(self._teardown())
         cancelled = False
         while not task.done():
@@ -559,10 +571,20 @@ class BrowserController:
                 await asyncio.shield(task)
             except asyncio.CancelledError:
                 cancelled = True
-        task.result()
+        result = task.result()
         if cancelled:raise asyncio.CancelledError()
+        return result
 
     async def _teardown(self):
+        # Legacy references are not M11 retained ownership. Never close a real
+        # browser or release its profile lock through an unapproved fallback.
+        if self._context is not None or self._driver is not None or self._lock_fd is not None:
+            authority = getattr(self, 'authority', None)
+            if authority is not None:
+                authority.note_external_uncertainty()
+            return {'ok': False, 'status': 'cleanup_unknown', 'denied': True,
+                    'error': 'Browser ownership is unverified; cleanup remains disabled.',
+                    'settled': False, 'retry_allowed': False}
         self._permit = None
         context, driver = self._context, self._driver
         self._context = self._driver = None
@@ -588,3 +610,4 @@ class BrowserController:
                     os.close(self._lock_fd)
                     self._lock_fd = None
                     if os.name!='nt':self._lock_path.unlink(missing_ok=True)
+        return _ok('closed', settled=True)

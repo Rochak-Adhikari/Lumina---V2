@@ -1,4 +1,5 @@
 """Supervised Claude stream, with a capability-limited workspace bridge."""
+from .control_authority import blocked_effect
 import asyncio
 import json
 import os
@@ -115,6 +116,7 @@ class ClaudeCodeWorker:
             return [str(Path(os.environ.get('SystemRoot',r'C:\Windows'))/'System32/WindowsPowerShell/v1.0/powershell.exe'),'-NoProfile','-ExecutionPolicy','Bypass','-File',executable,*args]
         return [executable,*args]
 
+    @blocked_effect
     async def run(self,session_id,message,workspace=None):
         root=Path(workspace).resolve() if workspace else self.root
         if not root.is_dir() or root==Path(root.anchor): raise RuntimeError('Choose a project directory below the drive root.')
@@ -207,14 +209,17 @@ class ClaudeCodeWorker:
                 self.manager.emit(wid,'worker.terminal_closed')
             bundle.cleanup()
 
+    @blocked_effect
     async def send_message(self,session_id,message):
         raise RuntimeError('Interactive input is unavailable; resume after the current turn completes.')
 
+    @blocked_effect
     async def cancel(self,session_id):
         process=self.processes.get(session_id)
         if process:await self._terminate(process)
 
     @staticmethod
+    @blocked_effect
     async def _terminate(process):
         existing=getattr(process,'_lumina_termination',None)
         if existing is not None:
@@ -228,6 +233,7 @@ class ClaudeCodeWorker:
             raise
 
     @staticmethod
+    @blocked_effect
     async def _kill_tree(process):
         if process.returncode is not None:return
         if os.name=='nt':

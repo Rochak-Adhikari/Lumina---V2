@@ -1,8 +1,12 @@
 const $=id=>document.getElementById(id);
 import {setupWorkerPanel} from './workers.js';
 import {workerAction} from './worker-actions.js';
+import {setupGoals} from './goals.js';
+import {setupControlPolicy} from './control-policy.js';
 export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
   const workers=setupWorkerPanel({getConfig,notice});
+  const goals=setupGoals({getConfig,notice});
+  setupControlPolicy();
   let previewUrl=null;
   let selectedUpload=null, workspaceRequest=0;
   try{selectedUpload=JSON.parse(localStorage.getItem('lumina.uploadSelection')||'null');}catch{}
@@ -63,7 +67,19 @@ export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
     const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'The request failed.');return result;
   }
   function details(title,text){$('details-title').textContent=title;$('details-text').textContent=text;if(!$('details').open)$('details').showModal();}
-  function showConfirmation(data){confirmation=data.confirmation_id;$('confirmation-title').textContent='Confirm action';$('confirmation-message').textContent=data.message||'Review this action before continuing.';$('confirmation-target').textContent=data.target||'';if(!$('confirmation').open)$('confirmation').showModal();}
+  function showConfirmation(data){
+    confirmation=data.confirmation_id;
+    $('confirmation-title').textContent='Confirm action';
+    $('confirmation-message').textContent=data.message||'Review this action before continuing.';
+    $('confirmation-target').textContent=data.target||'';
+    const full=$('confirmation-details');
+    full.textContent=data.details ? JSON.stringify(data.details,null,2) : '';
+    full.hidden=!data.details;
+    if(!$('confirmation').open)$('confirmation').showModal();
+  }
+  $('confirmation').addEventListener('close',()=>{
+    $('confirmation-details').textContent='';$('confirmation-details').hidden=true;
+  });
   function phase1Text(result){
     if(result?.analysis)return result.analysis+(result.analysis_truncated?'\n\nOnly part of the document was analyzed.':'');
     if(result?.text)return result.text+(result.truncated?'\n\nExtraction was truncated.':'');
@@ -92,10 +108,10 @@ export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
     try{
       const data=await(await fetch('/api/tasks')).json();
       $('task-worker').replaceChildren(...data.workers.map(w=>new Option(w,w)));
-      $('task-submit').disabled=!data.workers.length;
-      $('worker-status').textContent=data.workers.length?'Choose a worker and give it a task.':'No agent worker is configured. Local commands remain available.';
+      $('worker-status').textContent=data.workers.length?'Worker history is available; new worker launches remain disabled.':'Agent worker launch is disabled. Scoped read-only commands and Local goals remain available.';
+      $('task-submit').disabled=true;
       $('task-list').replaceChildren();
-      for(const task of data.tasks){
+      for(const task of data.tasks.filter(task=>task.kind!=='local_goal')){
         const article=document.createElement('article'),label=document.createElement('p');label.textContent=`${task.worker}: ${task.status.replaceAll('_',' ').toLowerCase()}. ${task.summary}`;article.append(label);
         const result=document.createElement('button');result.textContent='Read result';result.onclick=async()=>{try{const data=await post('/api/tasks',{action:'result',task_id:task.task_id});details('Agent result',data.result||'No result is available yet.');}catch(e){notice(e.message);}};article.append(result);
         if(!['CANCELLED'].includes(task.status)){
@@ -104,7 +120,7 @@ export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
         const remove=document.createElement('button');remove.textContent='Remove inactive agent';remove.onclick=async()=>{try{await workerAction(post,'remove',task);await tasks();}catch(e){notice(e.message);}};article.append(remove);
         if(['WAITING_FOR_USER','COMPLETED','ERROR'].includes(task.status)){
           const reply=document.createElement('textarea');reply.placeholder='Your reply to this worker';reply.setAttribute('aria-label','Reply to '+task.worker);reply.maxLength=12000;
-          const submit=document.createElement('button');submit.textContent=task.status==='RUNNING'?'Send reply':'Resume task';submit.onclick=async()=>{try{await post('/api/tasks',{action:task.status==='RUNNING'?'message':'resume',task_id:task.task_id,message:reply.value});await tasks();}catch(e){notice(e.message);}};article.append(reply,submit);
+          const submit=document.createElement('button');submit.textContent='Resume unavailable';submit.disabled=true;submit.title='Worker execution is not admitted by the current control authority.';reply.disabled=true;article.append(reply,submit);
         }
         $('task-list').append(article);
       }
@@ -125,20 +141,23 @@ export function setupControls({send,notice,getConfig,prepareAudio=async()=>{}}){
   async function preview(){try{const response=await fetch('/api/screen-preview',{headers:{'X-Lumina-Token':getConfig().token}});if(!response.ok)return;if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(await response.blob());$('phase1-preview').src=previewUrl;$('phase1-preview').hidden=false;}catch{notice('Screen preview is unavailable.');}}
   window.addEventListener('pagehide',()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);});
   $('phase1-logs').onclick=loadLogs;$('session-log-refresh').onclick=loadLogs;
-  $('task-start').onsubmit=async e=>{e.preventDefault();$('task-submit').disabled=true;try{const payload={action:'start',worker:$('task-worker').value,message:$('task-message').value};if($('task-workspace').value.trim())payload.workspace=$('task-workspace').value.trim();await post('/api/tasks',payload);$('task-message').value='';await tasks();$('controls').close();workers.event({type:'worker_panel_open'});}catch(error){notice(error.message);}finally{$('task-submit').disabled=!$('task-worker').options.length;}};
+  $('task-start').onsubmit=e=>{e.preventDefault();notice('New worker launches are disabled; no command was dispatched.');};
   async function confirm(approve){const id=confirmation;if(!id)return;let speak=approve&&$('spoken').checked;if(speak){try{await prepareAudio();}catch(error){speak=false;notice(error.message+' The answer will still appear as text.');}}confirmation=null;$('confirmation').close();$('phase1-output').textContent=approve?'Processing…':'Cancelled.';try{const result=await post('/api/confirm',{confirmation_id:id,approve,client_id:getConfig().client_id,speak});if(result?.ok)$('phase1-output').textContent=phase1Text(result);await phase1Status();}catch(e){$('phase1-output').textContent=e.message;notice(e.message);}}
   $('confirmation-approve').onclick=()=>confirm(true);$('confirmation-deny').onclick=()=>confirm(false);
   $('confirmation').addEventListener('cancel',e=>{e.preventDefault();confirm(false);});
   function speakNext(){
     if(announcementInFlight||state?.state!=='IDLE'||!$('spoken').checked||!announcements.length)return;
-    if(state.live_connected){announcementInFlight=announcements[0];send({type:'announce',id:announcementInFlight});return;}
-
+    // Spoken replies are opt-in via the Speak checkbox. announce works with or
+    // without an existing live session: the runtime opens a speech-only session
+    // when needed and the same path is used for greetings, reminders and results.
+    announcementInFlight=announcements[0];send({type:'announce',id:announcementInFlight});
   }
   return {
     state(value){state=value;speakNext();},
     event(message){
       window.dispatchEvent(new CustomEvent('lumina-event',{detail:message}));
       workers.event(message);
+      goals.event(message);
       if(message.type==='workspace_open'){$('upload-workspace').showModal();refreshWorkspace();}
       if(message.type==='attachment'){selectUpload({name:message.name,path:message.path,id:message.id});refreshWorkspace();notice(message.name+' is saved in Workspace.');}
       if(message.type==='screen_preview')preview();

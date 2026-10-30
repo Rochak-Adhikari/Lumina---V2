@@ -5,6 +5,7 @@ import sys
 
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lumina.control_authority import denied
 from lumina.desktop import DesktopServices
 
 
@@ -13,6 +14,8 @@ class WorkspaceBridge:
         self.desktop = DesktopServices(Path(root))
 
     def call(self, name, args):
+        if name in {'write', 'edit'}:
+            return denied()
         if name == 'search': return self.desktop.search.search_files(query=args['query'])
         path = self.desktop.resolver.path(args['path'], must_exist=name!='write')
         if name == 'read':

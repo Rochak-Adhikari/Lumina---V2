@@ -9,6 +9,12 @@ class MemoryAdmissionService:
     def admit(self, candidate_id, *, authorized=False):
         return self.service._admit(candidate_id, authorized=authorized)
 
+    def reject_candidate(self, candidate_id, reason='', *, authorized=False):
+        return self.service._reject_candidate(candidate_id, reason=reason, authorized=authorized)
+
+    def defer_candidate(self, candidate_id, *, authorized=False):
+        return self.service._defer_candidate(candidate_id, authorized=authorized)
+
     def bootstrap_record(self, item, event, entities, *, authorized=False):
         """Local reviewed-import boundary; deliberately not exposed as a model tool.
 

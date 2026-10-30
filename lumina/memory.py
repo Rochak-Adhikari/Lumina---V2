@@ -94,7 +94,7 @@ class MemoryStore(MemoryService):
             event=self.record_event('conversation.message',{'role':'user','text':row['text'],'_privacy_class':previous['privacy_class']},source_type='user')
             # Restoration begins a new validity interval, preserving the deletion gap.
             result=self.propose(dict(kind='fact',subject=previous['subject_entity_id'],predicate=previous['predicate'],object=previous['object_value'],
-                source_event_id=event['id'],privacy_class=previous['privacy_class']),authorized=True)
+                source_event_id=event['id'],privacy_class=previous['privacy_class'],resurrect=True),authorized=True)
             if not result.get('ok'):return result
             self.db.execute('UPDATE legacy_memory_map SET record_id=? WHERE legacy_id=?',(result['record_id'],int(memory_id)))
             self.db.execute('UPDATE memories SET deleted=NULL,updated=? WHERE id=?',(time.time(),int(memory_id)))

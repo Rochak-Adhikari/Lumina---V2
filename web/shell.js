@@ -4,8 +4,8 @@ document.querySelectorAll('.nav-rail button>span:first-child').forEach((host,ind
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.5');
   const workspace=host.parentElement.dataset.open==='workspace-open';
-  const key=host.parentElement.dataset.open||host.parentElement.dataset.focus;
-  const paths={workspace:icons[0],message:icons[1],'workers-open':icons[2],query:icons[3],'controls-open':icons[4],'settings-open':icons[5],'automation-open':'M12 3a9 9 0 1 0 9 9M12 6v6l4 2M17 3h4v4'};
+  const key=host.parentElement.dataset.open||host.parentElement.dataset.focus||host.parentElement.id;
+  const paths={workspace:icons[0],message:icons[1],'workers-open':icons[2],query:icons[3],'controls-open':icons[4],'settings-open':icons[5],'automation-open':'M12 3a9 9 0 1 0 9 9M12 6v6l4 2M17 3h4v4','command-deck-open':'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5','brain-dump-open':'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z','earth-open':'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 0c-2.5 2.7-4 6.2-4 10s1.5 7.3 4 10c2.5-2.7 4-6.2 4-10s-1.5-7.3-4-10zm-8.7 8h17.4M3.3 14h17.4'};
   const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',workspace?'M3 5h7l2 3h9v13H3z':paths[key]||icons[0]);svg.append(path);host.replaceChildren(svg);
 });
 // The existing search is semantic; describe what it actually searches.

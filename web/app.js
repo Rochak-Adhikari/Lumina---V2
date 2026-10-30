@@ -9,6 +9,11 @@ import {VoiceActivity} from './voice.js';
 import {ConversationLease} from './call.js';
 import {setupTelemetry} from './telemetry.js';
 import {setupScreenShare} from './screen-share.js';
+import {setupOwnedWindow} from './owned-window.js';
+import {setupChatLayout} from './chat-layout.js';
+import {setupCommandDeck} from './command-deck.js';
+import {setupBrainDump} from './brain-dump.js';
+import {setupEarthWorkspace} from './earth-workspace.js';
 
 const $=id=>document.getElementById(id);
 let config,ws,orb,environment,currentState,graphRevision=-1,messageSignature='',recording=false,micPending=false,connected=false,reconnectTimer,graphPromise=null;
@@ -19,6 +24,10 @@ function send(data){if(ws?.readyState!==WebSocket.OPEN){notice('The local runtim
 const audio=new BrowserAudio(send);const controls=setupControls({send,notice,getConfig:()=>config,prepareAudio:()=>audio.initialize()});
 setupAutomation({getConfig:()=>config,notice});
 setupContinuity({getConfig:()=>config,notice});
+setupOwnedWindow({getConfig:()=>config,notice});
+const commandDeck=setupCommandDeck({getConfig:()=>config,notice,send});
+const brainDump=setupBrainDump({getConfig:()=>config,notice,send});
+const earthWorkspace=setupEarthWorkspace({getConfig:()=>config,notice});
 const screenShare=setupScreenShare({getConfig:()=>config,notice,prepareAudio:()=>audio.initialize()});
 async function analysisEvent(message){
   if(message.type==='client_ready'){config.client_id=message.client_id;send({type:'spoken_setting',enabled:$('spoken').checked});return;}
@@ -30,6 +39,7 @@ async function analysisEvent(message){
 window.addEventListener('lumina-event',event=>{analysisEvent(event.detail).catch(error=>{audio.interrupt();notice(error.message);send({type:'audio_error'});});});
 $('spoken').addEventListener('change',()=>send({type:'spoken_setting',enabled:$('spoken').checked}));
 setupTelemetry(audio);
+setupChatLayout();
 let vad=null,listenTimer,callLease=null,turnPending=false,answerStartedAt=0,turnStartedAt=0;
 audio.onPlaybackStart=()=>{answerStartedAt=performance.now();};
 audio.onPlaybackEnd=()=>{callLease?.answered(answerStartedAt);};
@@ -42,9 +52,9 @@ function microphoneReady(){audio.monitoring=true;recording=true;micPending=false
  listenTimer=setInterval(()=>callLease?.tick(),100);$('mic').disabled=false;$('mic').classList.add('recording');setMicLabel(true);$('mic').setAttribute('aria-pressed','true');$('mic-hint').textContent='Listening · microphone on';}
 function setMicLabel(active){const label=active?'End call':'Talk to LUMINA';$('mic').querySelector('.mic-label').textContent=label;$('mic').setAttribute('aria-label',label);$('mic').title=label;}
 const headlines={IDLE:['Here. At your command.','Your space, a little more connected.'],LISTENING:['I am listening.','Finish speaking when you are ready.'],THINKING:['One moment.','Working through your request.'],EXECUTING:['Looking through your files.','Only within your configured folder.'],SPEAKING:['Here is what I found.','You can interrupt me at any time.'],INTERRUPTED:['You have my attention.','Ready when you are.'],WAITING_FOR_USER:['Ready for your next move.','Local capabilities remain available.'],ERROR:['A connection needs attention.','Local capabilities remain available.']};
-function selectNode(node){if(node.record_id){window.dispatchEvent(new CustomEvent('lumina-event',{detail:{type:'continuity_inspect',id:node.record_id}}));return;}selectedPath=node.path;$('selection-type').textContent=node.type==='folder'?'Folder':'File';$('selection-name').textContent=node.filename;$('selection-path').textContent=node.path;$('selection').hidden=false;}
+function selectNode(node){if(node.record_id){window.dispatchEvent(new CustomEvent('lumina-event',{detail:{type:'continuity_inspect',id:node.record_id}}));return;}selectedPath=node.path??node.source_file??'';$('selection-type').textContent=node.type==='folder'?'Folder':'File';$('selection-name').textContent=node.filename??node.label??node.id;$('selection-path').textContent=selectedPath;$('selection').hidden=false;}
 function renderState(state){
-  currentState=state;controls.state(state);orb?.setState(state.state);$('state-tag').textContent=state.state.toLowerCase().replaceAll('_',' ');
+  currentState=state;controls.state(state);commandDeck?.state(state);brainDump?.state(state);orb?.setState(state.state);$('state-tag').textContent=state.state.toLowerCase().replaceAll('_',' ');
   const [headline,subline]=headlines[state.state]||headlines.IDLE;$('headline').textContent=headline;$('subline').textContent=subline;
   $('connection').textContent=state.provider_status==='local'?'Local mode':state.provider_status==='connected'?'Online provider connected':state.provider_status==='connecting'?'Connecting online':'Online provider unavailable';
   $('runtime-health').textContent='connected';$('connection-dot').classList.remove('offline');
@@ -61,7 +71,7 @@ window.addEventListener('pagehide',()=>clearInterval(knowledgeRefresh),{once:tru
 window.addEventListener('lumina-event',event=>{if(event.detail.type==='continuity_result')loadGraph();});
 function stopMic(){clearInterval(listenTimer);callLease=null;turnPending=false;audio.stopCapture();audio.monitoring=false;audio.onPCM=null;vad?.reset();vad=null;recording=false;micPending=false;$('mic').classList.remove('recording');setMicLabel(false);$('mic').setAttribute('aria-pressed','false');$('mic').disabled=false;$('mic-hint').textContent='Microphone off';}
 async function finishTurn(){if(!recording)return;if(!vad?.active){armTurn();return;}if(/^(stop|hang up)[.!?]*$/.test(vad.text)){closeCall();return;}const stamp=turnStartedAt;await audio.finishCapture();if(!recording||stamp!==turnStartedAt)return;send({type:'mic_end',started_at:stamp});armTurn();$('mic-hint').textContent='Microphone on · continue when ready';}
-async function connect(){try{const response=await fetch('/api/config',{cache:'no-store'});if(!response.ok)throw Error();Object.assign(config,await response.json());}catch{notice('The local runtime is unavailable. Your message is preserved.');reconnectTimer=setTimeout(connect,2000);return;}ws=new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(config.token)}`);ws.onopen=()=>{connected=true;};ws.onclose=()=>{connected=false;audio.minimumSpeechId=0;window.dispatchEvent(new CustomEvent('lumina-event',{detail:{type:'connection_closed'}}));audio.interrupt();stopMic();$('runtime-health').textContent='disconnected';$('connection').textContent='Runtime disconnected';$('connection-dot').classList.add('offline');reconnectTimer=setTimeout(connect,2000);};ws.onmessage=async event=>{const message=JSON.parse(event.data);try{controls.event(message);if(message.type==='knowledge_filter'){try{const hits=environment?.search(message.query);$('search-summary').textContent=`${hits} direct concept hits; context dimmed.`;}catch{}}if(message.type==='interrupt')audio.interrupt(message.speech_id);switch(message.type){case'state':renderState(message.data);break;case'audio':if(!turnPending&&!audio.capturing)await audio.play(message);break;case'turn_complete':audio.complete(message.speech_id);break;case' interrupt':audio.interrupt();break;case'transcript':transcript[message.role]+=message.text;if(message.role==='user')vad?.setTranscript(transcript.user);$('live-transcript').textContent=(transcript.user?`You: ${transcript.user}\n`:'')+transcript.assistant;break;case'transcript_clear':transcript.user='';transcript.assistant='';$('live-transcript').textContent='';break;case'speech_ready':if(recording&&message.started_at===turnStartedAt){turnPending=false;audio.startCapture();}break;case'mic_ready':if(micPending){await audio.prepareMicrophone();if(!micPending){audio.stopCapture();break;}microphoneReady();}else send({type:'mic_end'});break;case'voice_closed':audio.interrupt();stopMic();break;case'notice':notice(message.text);break;}}catch(error){audio.interrupt();stopMic();notice(error.message||'Audio failed.');send({type:'audio_error'});}};}
+async function connect(){try{const response=await fetch('/api/config',{cache:'no-store'});if(!response.ok)throw Error();Object.assign(config,await response.json());}catch{notice('The local runtime is unavailable. Your message is preserved.');reconnectTimer=setTimeout(connect,2000);return;}ws=new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(config.token)}`);ws.onopen=()=>{connected=true;window.dispatchEvent(new CustomEvent('lumina-event',{detail:{type:'connection_opened'}}));};ws.onclose=()=>{connected=false;audio.minimumSpeechId=0;window.dispatchEvent(new CustomEvent('lumina-event',{detail:{type:'connection_closed'}}));audio.interrupt();stopMic();$('runtime-health').textContent='disconnected';$('connection').textContent='Runtime disconnected';$('connection-dot').classList.add('offline');reconnectTimer=setTimeout(connect,2000);};ws.onmessage=async event=>{const message=JSON.parse(event.data);try{controls.event(message);commandDeck?.event(message);brainDump?.event(message);if(message.type==='knowledge_filter'){try{const hits=environment?.search(message.query);$('search-summary').textContent=`${hits} direct concept hits; context dimmed.`;}catch{}}if(message.type==='interrupt')audio.interrupt(message.speech_id);switch(message.type){case'state':renderState(message.data);break;case'audio':if(!turnPending&&!audio.capturing)await audio.play(message);break;case'turn_complete':audio.complete(message.speech_id);break;case' interrupt':audio.interrupt();break;case'transcript':transcript[message.role]+=message.text;if(message.role==='user')vad?.setTranscript(transcript.user);$('live-transcript').textContent=(transcript.user?`You: ${transcript.user}\n`:'')+transcript.assistant;break;case'transcript_clear':transcript.user='';transcript.assistant='';$('live-transcript').textContent='';break;case'speech_ready':if(recording&&message.started_at===turnStartedAt){turnPending=false;audio.startCapture();}break;case'mic_ready':if(micPending){await audio.prepareMicrophone();if(!micPending){audio.stopCapture();break;}microphoneReady();}else send({type:'mic_end'});break;case'voice_closed':audio.interrupt();stopMic();break;case'notice':notice(message.text);break;}}catch(error){audio.interrupt();stopMic();notice(error.message||'Audio failed.');send({type:'audio_error'});}};}
 async function api(path){const response=await fetch(path,{method:'POST',headers:{'X-Lumina-Token':config.token}});if(!response.ok)throw Error('The runtime could not finish this action.');await loadGraph();}
 $('composer').addEventListener('submit',async event=>{
  event.preventDefault();const text=$('message').value.trim();if(!text)return;
@@ -69,7 +79,7 @@ $('composer').addEventListener('submit',async event=>{
  let voice=$('spoken').checked&&config.voice_available;
  if(voice){try{await audio.initialize();}catch(error){voice=false;notice(error.message+' Sending your message as text.');send({type:'client_audio_error',phase:'output_setup',code:error.name});}}
  audio.interrupt();if(recording){send({type:'mic_end'});stopMic();}
- if(send({type:'text',text,voice}))$('message').value='';
+ if(send({type:'text',text,voice})){$('message').value='';$('message').dispatchEvent(new Event('input'));}
 });
 $('attach').addEventListener('click',()=>$('file-upload').click());
 $('file-upload').addEventListener('change',async event=>{const files=[...event.target.files||[]];if(!files.length)return;for(const file of files){const body=new FormData();body.append('file',file,file.name);try{const response=await fetch('/api/files/upload',{method:'POST',headers:{'X-Lumina-Token':config.token},body});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'The file could not be uploaded.');notice(`${file.name} is in the workspace and ready to inspect.`);}catch(error){notice(`${file.name}: ${error.message}`);}}event.target.value='';await loadGraph();});

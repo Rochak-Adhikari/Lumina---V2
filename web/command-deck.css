@@ -1,0 +1,637 @@
+/* LUMINA COMMAND DECK: Operational Command Center Stylesheet
+   Design Authority: web/crimson.css and web/style.css tokens
+*/
+
+/* Dialog geometry and backdrop */
+dialog#command-deck-panel {
+  width: 1200px;
+  max-width: 95vw;
+  max-height: 90vh;
+  padding: 22px 24px;
+  background: var(--lumina-panel, #0b0c0e);
+  border: 1px solid var(--lumina-border-red, #ff173d47);
+  border-radius: 12px;
+  color: var(--lumina-text, #f4f6f8);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.8), var(--lumina-glow, 0 0 20px #ff173d29);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+dialog#command-deck-panel::backdrop {
+  background: rgba(3, 3, 3, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+/* Header & Wordmark */
+.cd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  margin-bottom: 18px;
+}
+
+.cd-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cd-title-group h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  color: var(--lumina-text, #f4f6f8);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cd-title-group h2 .cd-icon {
+  color: var(--lumina-red-bright, #ff173d);
+}
+
+.cd-subtitle {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--lumina-text-secondary, #a5acb8);
+  text-transform: uppercase;
+  font-family: Consolas, monospace;
+}
+
+.cd-close-btn {
+  background: transparent;
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  color: var(--lumina-text-secondary, #a5acb8);
+  font-size: 20px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cd-close-btn:hover {
+  background: rgba(255, 23, 61, 0.15);
+  border-color: var(--lumina-border-red, #ff173d47);
+  color: var(--lumina-text, #f4f6f8);
+}
+
+/* CD-F001: Live Status Header Strip */
+.cd-live-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--lumina-bg-secondary, #070708);
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.cd-live-strip.stale {
+  border-color: var(--lumina-warning, #ffb83e);
+  background: rgba(255, 184, 62, 0.05);
+}
+
+.cd-live-strip.disconnected {
+  border-color: var(--lumina-red, #e5092f);
+  background: rgba(229, 9, 47, 0.08);
+}
+
+.cd-status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--lumina-text-secondary, #a5acb8);
+}
+
+.cd-status-item strong {
+  color: var(--lumina-text, #f4f6f8);
+  font-weight: 500;
+}
+
+.cd-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.cd-pill:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.cd-pill.ready,
+.cd-pill.idle {
+  background: rgba(32, 230, 165, 0.12);
+  border: 1px solid rgba(32, 230, 165, 0.35);
+  color: var(--lumina-success, #20e6a5);
+}
+
+.cd-pill.listening,
+.cd-pill.connected {
+  background: rgba(57, 217, 255, 0.12);
+  border: 1px solid rgba(57, 217, 255, 0.35);
+  color: var(--lumina-info, #39d9ff);
+}
+
+.cd-pill.thinking,
+.cd-pill.waiting_for_user {
+  background: rgba(255, 184, 62, 0.12);
+  border: 1px solid rgba(255, 184, 62, 0.35);
+  color: var(--lumina-warning, #ffb83e);
+}
+
+.cd-pill.executing,
+.cd-pill.speaking {
+  background: rgba(255, 23, 61, 0.15);
+  border: 1px solid var(--lumina-border-red, #ff173d47);
+  color: var(--lumina-red-bright, #ff173d);
+}
+
+.cd-pill.error,
+.cd-pill.disconnected {
+  background: rgba(229, 9, 47, 0.2);
+  border: 1px solid #e5092f;
+  color: #ff859a;
+}
+
+.cd-stale-tag {
+  color: var(--lumina-warning, #ffb83e);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.cd-strip-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--lumina-border, rgba(255, 255, 255, 0.1));
+}
+
+.cd-approval-badge {
+  background: rgba(255, 184, 62, 0.2);
+  border: 1px solid var(--lumina-warning, #ffb83e);
+  color: #ffd27d;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cd-approval-badge:hover {
+  background: rgba(255, 184, 62, 0.35);
+}
+
+/* Two-column operational dashboard grid */
+.cd-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.95fr);
+  gap: 20px;
+}
+
+.cd-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* Card primitives */
+.cd-card {
+  background: var(--lumina-panel-elevated, #111216);
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  border-radius: 9px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cd-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.cd-card-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--lumina-text, #f4f6f8);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cd-card-header .cd-counter {
+  font-size: 11px;
+  color: var(--lumina-text-secondary, #a5acb8);
+  font-family: Consolas, monospace;
+}
+
+/* CD-F002: Mission Control Task List */
+.cd-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.cd-task-item {
+  background: var(--lumina-bg-secondary, #070708);
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.cd-task-item:hover {
+  background: #0f1014;
+  border-color: rgba(255, 23, 61, 0.3);
+}
+
+.cd-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cd-task-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cd-worker-tag {
+  background: rgba(255, 23, 61, 0.12);
+  border: 1px solid var(--lumina-border-red, #ff173d47);
+  color: var(--soft, #ff859a);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+
+.cd-task-id {
+  font-size: 11px;
+  color: var(--lumina-text-secondary, #a5acb8);
+  font-family: Consolas, monospace;
+}
+
+.cd-task-instruction {
+  font-size: 12px;
+  color: var(--lumina-text, #f4f6f8);
+  line-height: 1.45;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.cd-task-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--lumina-text-secondary, #a5acb8);
+}
+
+.cd-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cd-btn-sm {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--lumina-text, #f4f6f8);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cd-btn-sm:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cd-btn-danger:hover {
+  background: rgba(229, 9, 47, 0.2);
+  border-color: var(--lumina-red, #e5092f);
+  color: #ffabb7;
+}
+
+/* CD-F003: Operational Activity Feed */
+.cd-filter-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.cd-filter-pill {
+  font-size: 10px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  background: transparent;
+  color: var(--lumina-text-secondary, #a5acb8);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cd-filter-pill:hover {
+  color: var(--lumina-text, #f4f6f8);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cd-filter-pill.active {
+  background: rgba(255, 23, 61, 0.15);
+  border-color: var(--lumina-border-red, #ff173d47);
+  color: var(--lumina-text, #f4f6f8);
+}
+
+.cd-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.cd-feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.06));
+  font-size: 11px;
+}
+
+.cd-feed-item:last-child {
+  border-bottom: 0;
+}
+
+.cd-feed-time {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--lumina-text-muted, #89919d);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.cd-feed-icon {
+  font-size: 12px;
+  line-height: 1;
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+
+.cd-feed-icon.task { color: var(--lumina-info, #39d9ff); }
+.cd-feed-icon.tool { color: var(--lumina-text-secondary, #a5acb8); }
+.cd-feed-icon.approval { color: var(--lumina-warning, #ffb83e); }
+.cd-feed-icon.error { color: var(--lumina-red, #e5092f); }
+.cd-feed-icon.system { color: var(--lumina-success, #20e6a5); }
+
+.cd-feed-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.cd-feed-title {
+  color: var(--lumina-text, #f4f6f8);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cd-feed-detail {
+  color: var(--lumina-text-secondary, #a5acb8);
+  font-size: 10px;
+  margin-top: 2px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cd-feed-footer {
+  font-size: 10px;
+  color: var(--lumina-text-muted, #89919d);
+  text-align: center;
+  padding: 8px 4px 2px;
+  border-top: 1px dashed var(--lumina-border, rgba(255, 255, 255, 0.08));
+  margin-top: 4px;
+}
+
+/* CD-F004: Workspace Monitor */
+.cd-workspace-path {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  background: var(--lumina-bg-secondary, #070708);
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--lumina-text, #f4f6f8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cd-path-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+/* CD-F005: System Watch Alerts */
+.cd-alert-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cd-alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cd-alert-item.critical {
+  background: rgba(229, 9, 47, 0.15);
+  border: 1px solid var(--lumina-red, #e5092f);
+  color: #ffabb7;
+}
+
+.cd-alert-item.warning {
+  background: rgba(255, 184, 62, 0.12);
+  border: 1px solid var(--lumina-warning, #ffb83e);
+  color: #ffd899;
+}
+
+.cd-alert-item.healthy {
+  background: rgba(32, 230, 165, 0.08);
+  border: 1px solid rgba(32, 230, 165, 0.3);
+  color: var(--lumina-success, #20e6a5);
+}
+
+/* CD-F006: Task Detail Modal / Drawer */
+.cd-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 90vw;
+  background: var(--lumina-panel-elevated, #111216);
+  border-left: 1px solid var(--lumina-border-red, #ff173d47);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.7);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 10;
+  transition: transform 0.2s ease;
+}
+
+.cd-drawer[hidden] {
+  display: none !important;
+}
+
+.cd-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  padding-bottom: 12px;
+}
+
+.cd-drawer-header h3 {
+  font-size: 14px;
+  margin: 0;
+  color: var(--lumina-text, #f4f6f8);
+}
+
+.cd-drawer-dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px;
+  font-size: 11px;
+  margin: 0;
+}
+
+.cd-drawer-dl dt {
+  color: var(--lumina-text-secondary, #a5acb8);
+}
+
+.cd-drawer-dl dd {
+  color: var(--lumina-text, #f4f6f8);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cd-drawer pre {
+  background: var(--lumina-bg, #030303);
+  border: 1px solid var(--lumina-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 10px;
+  font: 11px/1.5 Consolas, monospace;
+  color: #cfd3dc;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Empty / Section Error States */
+.cd-empty {
+  color: var(--lumina-text-secondary, #a5acb8);
+  font-size: 11px;
+  font-style: italic;
+  padding: 18px 10px;
+  text-align: center;
+}
+
+.cd-section-error {
+  padding: 14px;
+  background: rgba(229, 9, 47, 0.1);
+  border: 1px solid rgba(229, 9, 47, 0.3);
+  border-radius: 6px;
+  color: #ff99aa;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 900px) {
+  dialog#command-deck-panel {
+    width: 96vw;
+    padding: 16px;
+  }
+
+  .cd-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cd-drawer {
+    width: 100%;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  dialog#command-deck-panel,
+  .cd-drawer,
+  button,
+  .cd-task-item {
+    transition: none !important;
+    animation: none !important;
+  }
+}

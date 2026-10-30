@@ -5,10 +5,14 @@ from .models import (
     PersonalState, Prediction, Relationship,
 )
 from .repository import Repository
+from .chunker import MessageChunker, TextChunk
+from .manifest import ExtractionManifest, ChunkRecord
+from .extractor import MemoryExtractor
 
 __all__ = [
     "Repository", "Event", "Entity", "Fact", "Evidence", "Episode", "Decision",
     "Goal", "Commitment", "OpenLoop", "Relationship", "MemoryCandidate",
     "PersonalState", "Prediction", "BehaviorPattern", "ContinuationContext",
-    "MemoryProposal",
+    "MemoryProposal", "MessageChunker", "TextChunk", "ExtractionManifest",
+    "ChunkRecord", "MemoryExtractor",
 ]

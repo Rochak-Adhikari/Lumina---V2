@@ -1,4 +1,5 @@
 """Small Windows operations; no shell input or model-generated commands."""
+from .control_authority import blocked_effect
 from pathlib import Path
 import os
 import platform
@@ -130,6 +131,7 @@ class LocalOperations:
         return {'ok': True, 'path': str(target), 'message': 'The file was handed to its default application.'}
 
     @staticmethod
+    @blocked_effect
     def launch_file(path):
         if os.name != 'nt':
             raise ValueError('Opening files is available on Windows only.')
@@ -203,6 +205,7 @@ class LocalOperations:
             kernel.CloseHandle(snapshot)
 
     @staticmethod
+    @blocked_effect
     def launch_app(path):
         if os.name != 'nt':
             raise ValueError('Opening applications is available on Windows only.')
@@ -216,11 +219,13 @@ class LocalOperations:
             raise ValueError('Use a complete HTTP or HTTPS address without credentials.')
         return url
 
+    @blocked_effect
     def open_url(self, url):
         self.validate_url(url)
         self.launch_file(url)
         return {'ok': True, 'message': 'The address was handed to the default browser.'}
 
+    @blocked_effect
     def delete_file(self, path):
         target = self.file(path, TEXT_EXTENSIONS | OPEN_EXTENSIONS)
         if os.name != 'nt': raise ValueError('Recoverable deletion is available on Windows only.')

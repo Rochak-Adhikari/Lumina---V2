@@ -19,6 +19,7 @@ from .computer_windows import ConfirmedService, ComputerError
 
 
 class ComputerSettings(ConfirmedService):
+    inspection_actions = frozenset({'list_targets', 'get', 'set', 'undo'})
     def __init__(self, provider=None, **kwargs):
         super().__init__(provider, **kwargs)
         self.undo_records = {}

@@ -6,10 +6,64 @@ import io
 import json
 import struct
 import sys
+from types import SimpleNamespace
 
 
 class CaptureError(Exception):
     pass
+
+
+def render_window(source, bounds):
+    """Explicit window rendering, not visible-desktop pixels or a silent fallback.
+
+    Runs only in the existing disposable capture worker (parent owns timeout).
+    Unsupported/protected/custom-rendered windows may fail or render incompletely.
+    """
+    from PIL import Image
+    hwnd, expected_pid = (int(value) for value in source.split(':'))
+    user, gdi = ctypes.WinDLL('user32', use_last_error=True), ctypes.WinDLL('gdi32', use_last_error=True)
+    user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user.GetWindowDC.argtypes, user.GetWindowDC.restype = [wintypes.HWND], wintypes.HDC
+    user.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user.PrintWindow.argtypes, user.PrintWindow.restype = [wintypes.HWND, wintypes.HDC, wintypes.UINT], wintypes.BOOL
+    gdi.CreateCompatibleDC.argtypes, gdi.CreateCompatibleDC.restype = [wintypes.HDC], wintypes.HDC
+    gdi.CreateCompatibleBitmap.argtypes, gdi.CreateCompatibleBitmap.restype = [wintypes.HDC, ctypes.c_int, ctypes.c_int], wintypes.HBITMAP
+    gdi.SelectObject.argtypes, gdi.SelectObject.restype = [wintypes.HDC, wintypes.HANDLE], wintypes.HANDLE
+    gdi.DeleteObject.argtypes, gdi.DeleteDC.argtypes = [wintypes.HANDLE], [wintypes.HDC]
+    gdi.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+                            ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
+    pid = wintypes.DWORD()
+    user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if pid.value != expected_pid:
+        raise CaptureError('stale_window')
+    width, height = bounds['width'], bounds['height']
+    dc = mem = bitmap = previous = None
+    try:
+        dc = user.GetWindowDC(hwnd)
+        mem = gdi.CreateCompatibleDC(dc) if dc else None
+        bitmap = gdi.CreateCompatibleBitmap(dc, width, height) if mem else None
+        if not bitmap:
+            raise CaptureError('window_render_unavailable')
+        previous = gdi.SelectObject(mem, bitmap)
+        if not previous or previous == ctypes.c_void_p(-1).value:
+            previous = None
+            raise CaptureError('window_render_unavailable')
+        if not user.PrintWindow(hwnd, mem, 0):
+            raise CaptureError('window_render_failed')
+        gdi.SelectObject(mem, previous); previous = None
+        # BITMAPINFOHEADER plus RGBQUAD; top-down 32-bit pixels, no compression.
+        info = ctypes.create_string_buffer(struct.pack('<IiiHHIIiiII', 40, width, -height, 1, 32,
+                                                        0, width * height * 4, 0, 0, 0, 0) + b'\0' * 4)
+        pixels = ctypes.create_string_buffer(width * height * 4)
+        if gdi.GetDIBits(dc, bitmap, 0, height, pixels, info, 0) != height:
+            raise CaptureError('window_render_failed')
+        with Image.frombytes('RGB', (width, height), pixels.raw, 'raw', 'BGRX') as image:
+            return SimpleNamespace(size=(width, height), width=width, height=height, rgb=image.tobytes())
+    finally:
+        if previous: gdi.SelectObject(mem, previous)
+        if bitmap: gdi.DeleteObject(bitmap)
+        if mem: gdi.DeleteDC(mem)
+        if dc: user.ReleaseDC(hwnd, dc)
 
 
 def enable_dpi():
@@ -113,7 +167,10 @@ def execute(request, *, backend_factory=None, image_module=None, window_reader=w
                     'windows': window_sources}, b''
         bounds = bounds_for(request, monitors, window_sources)
         started = datetime.now(timezone.utc).isoformat()
-        shot = backend.grab(bounds)
+        rendering = request.get('window_render', False)
+        if type(rendering) is not bool or (rendering and (request['target'] != 'window' or request.get('region') is not None)):
+            raise CaptureError('invalid_window_render')
+        shot = render_window(request['source'], bounds) if rendering else backend.grab(bounds)
         timestamp = datetime.now(timezone.utc).isoformat()
         if request['target'] == 'window':
             before = next(x for x in window_sources if x['id'] == request['source'])
@@ -133,7 +190,8 @@ def execute(request, *, backend_factory=None, image_module=None, window_reader=w
                 'capture_started_at': started, 'timestamp': timestamp,
                 'coordinate_space': 'physical_virtual_desktop', 'dpi_awareness': dpi,
                 'mime_type': 'image/jpeg', 'byte_count': len(jpeg),
-                'capture_method': 'visible_desktop', 'occlusion_possible': request['target'] == 'window',
+                'capture_method': 'window_render' if rendering else 'visible_desktop',
+                'occlusion_possible': not rendering and request['target'] == 'window',
                 'protection_status': 'unknown', 'uploaded': False}, jpeg
 
 

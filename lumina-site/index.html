@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en" data-motion="full" data-visuals="cinematic">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Lumina — Say what you mean. Lumina follows through.</title>
+    <meta
+      name="description"
+      content="Lumina is a voice-first, local-first personal AI companion for Windows that turns what you ask into planned, approved and verified action — and keeps the thread between sessions."
+    />
+    <meta name="theme-color" content="#07080b" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Lumina" />
+    <meta property="og:title" content="Lumina — Say what you mean. Lumina follows through." />
+    <meta
+      property="og:description"
+      content="A voice-first, local-first AI companion that turns intent into planned, approved and verified action. Explore how it works."
+    />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Threads of amber and silver light woven on a dark loom — the Lumina visual identity." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Lumina — Say what you mean. Lumina follows through." />
+    <meta
+      name="twitter:description"
+      content="A voice-first, local-first AI companion that turns intent into planned, approved and verified action."
+    />
+    <meta name="twitter:image" content="/og-image.jpg" />
+
+    <script>
+      // Resolve motion and visual preferences before first paint to avoid a flash of animated content.
+      (function () {
+        var d = document.documentElement;
+        try {
+          var m = localStorage.getItem('lumina.motion');
+          var v = localStorage.getItem('lumina.visuals');
+          var sysReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          d.dataset.motion = m === 'full' || m === 'reduced' ? m : sysReduced ? 'reduced' : 'full';
+          if (v === 'lite') d.dataset.visuals = 'lite';
+        } catch (e) {}
+        d.classList.add('js');
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- The 3D world renders here. It is decorative: every idea it shows is also stated in the page text. -->
+    <div class="world" aria-hidden="true">
+      <canvas class="world__canvas" id="world-canvas"></canvas>
+      <div class="world__fallback">
+        <svg class="weave-fallback" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" focusable="false">
+          <defs>
+            <linearGradient id="fb-warp" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="90" y2="710">
+              <stop offset="0" stop-color="#b9d4ff" stop-opacity="0" />
+              <stop offset=".5" stop-color="#b9d4ff" stop-opacity=".35" />
+              <stop offset="1" stop-color="#b9d4ff" stop-opacity="0" />
+            </linearGradient>
+            <linearGradient id="fb-weft" x1="0" x2="1">
+              <stop offset="0" stop-color="#ffad5c" stop-opacity="0" />
+              <stop offset=".3" stop-color="#ffad5c" stop-opacity=".9" />
+              <stop offset="1" stop-color="#ffad5c" stop-opacity=".2" />
+            </linearGradient>
+          </defs>
+          <g class="weave-fallback__warp" stroke="url(#fb-warp)" stroke-width="1.2"></g>
+          <path d="M-20 700 C 120 660, 180 740, 300 700 S 480 640, 600 650 L 1220 650" fill="none" stroke="url(#fb-weft)" stroke-width="2.2" />
+        </svg>
+      </div>
+      <div class="world__vignette"></div>
+    </div>
+
+    <header class="site-header" id="site-header">
+      <a class="brand" href="#top" aria-label="Lumina — back to the top">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <path d="M11 4 V 28" stroke="#b9d4ff" stroke-width="2" stroke-linecap="round" />
+          <path d="M4 20 C 8 20, 9 22, 11 22 S 14 20, 18 20 L 28 20" stroke="#ffad5c" stroke-width="2.2" fill="none" stroke-linecap="round" />
+          <circle cx="11" cy="20" r="2.4" fill="#f3d38b" />
+        </svg>
+        <span class="brand__word">Lumina</span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Primary">
+        <button class="primary-nav__toggle" type="button" aria-expanded="false" aria-controls="primary-nav-list">
+          <span class="visually-hidden">Menu</span>
+          <span class="primary-nav__bars" aria-hidden="true"></span>
+        </button>
+        <ul class="primary-nav__list" id="primary-nav-list">
+          <li><a href="#intent">How it works</a></li>
+          <li><a href="#memory">Memory</a></li>
+          <li><a href="#execution">Approvals</a></li>
+          <li><a href="#capabilities">Capabilities</a></li>
+          <li><a href="#demo">Demo</a></li>
+          <li><a href="#explore">Explore</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-tools">
+        <button class="tool-btn sound-toggle" type="button" id="sound-toggle" aria-pressed="false" title="Sound is off">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="sound-toggle__icon">
+            <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" />
+            <path class="sound-toggle__waves" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <path class="sound-toggle__off" d="M16 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <span class="tool-btn__label">Sound <span class="sound-toggle__state">off</span></span>
+        </button>
+        <button class="tool-btn" type="button" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          <span class="tool-btn__label">Settings</span>
+        </button>
+      </div>
+
+      <div class="settings-panel" id="settings-panel" role="dialog" aria-modal="false" aria-labelledby="settings-title" hidden>
+        <h2 class="settings-panel__title" id="settings-title">Experience settings</h2>
+        <fieldset class="seg">
+          <legend>Motion</legend>
+          <label><input type="radio" name="motion" value="system" checked /> <span>Follow system</span></label>
+          <label><input type="radio" name="motion" value="full" /> <span>Full</span></label>
+          <label><input type="radio" name="motion" value="reduced" /> <span>Reduced</span></label>
+        </fieldset>
+        <fieldset class="seg">
+          <legend>Visuals</legend>
+          <label><input type="radio" name="visuals" value="cinematic" checked /> <span>Cinematic 3D</span></label>
+          <label><input type="radio" name="visuals" value="lite" /> <span>Lite (no 3D)</span></label>
+        </fieldset>
+        <div class="settings-panel__row">
+          <label for="volume">Volume</label>
+          <input type="range" id="volume" min="0" max="100" value="60" step="1" />
+        </div>
+        <p class="settings-panel__status" id="world-status" role="status">Preparing the 3D view…</p>
+        <button class="btn btn--small btn--ghost settings-panel__close" type="button" id="settings-close">Close</button>
+      </div>
+    </header>
+
+    <nav class="chapter-rail" aria-label="Chapters">
+      <ol>
+        <li><a href="#top" data-rail="0"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Arrival</span></a></li>
+        <li><a href="#intent" data-rail="1"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Intent</span></a></li>
+        <li><a href="#memory" data-rail="2"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Memory</span></a></li>
+        <li><a href="#execution" data-rail="3"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Action</span></a></li>
+        <li><a href="#capabilities" data-rail="4"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Capabilities</span></a></li>
+        <li><a href="#demo" data-rail="5"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Demo</span></a></li>
+        <li><a href="#explore" data-rail="6"><span class="chapter-rail__dot"></span><span class="chapter-rail__label">Explore</span></a></li>
+      </ol>
+    </nav>
+
+    <main id="main" tabindex="-1">
+      <!-- 00 · Arrival -->
+      <section class="chapter chapter--arrival" id="top" data-chapter="0" aria-labelledby="hero-title">
+        <div class="chapter__inner hero">
+          <p class="eyebrow">Personal AI companion · Windows · Private build</p>
+          <h1 class="hero__title" id="hero-title">
+            <span class="hero__line">Say what you mean.</span>
+            <span class="hero__line"><em>Lumina</em> follows through.</span>
+          </h1>
+          <p class="lede hero__lede">
+            A voice-first, local-first companion that turns what you ask into planned, approved and verified action — and keeps the
+            thread between sessions.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn--primary" href="#demo">Try the interactive demo</a>
+            <a class="btn btn--ghost" href="#intent">See how it works</a>
+          </div>
+          <p class="fine hero__fine">
+            Lumina is a personal project in active development and isn't publicly available.
+            <a href="#capabilities">See what works today</a>.
+          </p>
+        </div>
+        <p class="scroll-cue" aria-hidden="true"><span>Scroll</span></p>
+      </section>
+
+      <!-- 01 · Intent -->
+      <section class="chapter chapter--intent chapter--sticky" id="intent" data-chapter="1" aria-labelledby="intent-title">
+        <div class="sticky">
+          <div class="chapter__inner">
+            <p class="eyebrow"><span class="eyebrow__num">01</span> Intent</p>
+            <h2 id="intent-title">Start with what you mean, <em>not with menus.</em></h2>
+            <p class="lede">
+              Talk to Lumina the way you'd brief a capable colleague. It works out the goal, the constraints and what “done” looks
+              like — and when something is ambiguous, it asks instead of guessing.
+            </p>
+            <figure class="exchange" aria-label="Illustrative exchange">
+              <div class="exchange__turn exchange__turn--you">
+                <span class="exchange__who">You</span>
+                <p>Pull this week's meeting notes into a short brief.</p>
+              </div>
+              <div class="exchange__turn exchange__turn--lumina">
+                <span class="exchange__who">Lumina</span>
+                <p>Just the Atlas notes, or all three projects? I'll keep it to one page, the way you usually like it.</p>
+              </div>
+              <figcaption>Illustrative exchange</figcaption>
+            </figure>
+            <ul class="points">
+              <li><strong>Voice first, text any time.</strong> Speak naturally, or type when it's quiet.</li>
+              <li><strong>Asks before it assumes.</strong> Unclear references get a question, not a guess.</li>
+              <li><strong>You stay in charge.</strong> Interrupt, cancel, deny or correct at any point.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 · Memory -->
+      <section class="chapter chapter--memory chapter--sticky chapter--right" id="memory" data-chapter="2" aria-labelledby="memory-title">
+        <div class="sticky">
+          <div class="chapter__inner">
+            <p class="eyebrow"><span class="eyebrow__num">02</span> Memory</p>
+            <h2 id="memory-title">Context that keeps. <em>Control that stays with you.</em></h2>
+            <p class="lede">
+              Lumina remembers what's worth keeping — preferences, decisions, unfinished work — not every word you've said. Each
+              memory carries its source and how sure Lumina is, and any of it can be inspected, corrected or forgotten.
+            </p>
+            <div class="ledger" id="memory-ledger">
+              <div class="ledger__head">
+                <span class="ledger__title">Memory inspector</span>
+                <span class="tag tag--example">Example memories</span>
+              </div>
+              <ul class="ledger__list" id="memory-list"><!-- rendered by memory-ledger.ts; static fallback below --></ul>
+              <noscript>
+                <ul class="ledger__list">
+                  <li class="memory">Prefers one-page, bullet-point briefs — source: you said so.</li>
+                  <li class="memory">Atlas review moved to 3 November — source: meeting notes.</li>
+                  <li class="memory">Unfinished: reply to the landlord — source: task paused 20 October.</li>
+                  <li class="memory">Edits Python in VS Code — source: observed from tool use.</li>
+                </ul>
+              </noscript>
+              <div class="ledger__foot">
+                <button class="btn btn--small btn--ghost" type="button" id="memory-restore" hidden>Restore example memories</button>
+              </div>
+            </div>
+            <p class="fine">
+              In Lumina, memory lives in a local database on your PC. Recognizable credentials are filtered out before anything is
+              stored, and nothing is shared with a cloud service without separate, explicit consent.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 · Action -->
+      <section class="chapter chapter--execution chapter--sticky" id="execution" data-chapter="3" aria-labelledby="execution-title">
+        <div class="sticky">
+          <div class="chapter__inner">
+            <p class="eyebrow"><span class="eyebrow__num">03</span> Action</p>
+            <h2 id="execution-title">Plan. Approve. <em>Act. Verify.</em></h2>
+            <p class="lede">
+              Every request runs through the same disciplined loop. The model proposes; Lumina's runtime decides what is allowed —
+              and anything with consequences waits for you.
+            </p>
+            <ol class="loop" id="loop-steps">
+              <li class="loop__step" data-step="0">
+                <span class="loop__name">Understand</span>
+                <span class="loop__text">Works out the goal, the constraints and what “done” looks like.</span>
+              </li>
+              <li class="loop__step" data-step="1">
+                <span class="loop__name">Recall</span>
+                <span class="loop__text">Brings in only the context that matters, with its source.</span>
+              </li>
+              <li class="loop__step" data-step="2">
+                <span class="loop__name">Plan</span>
+                <span class="loop__text">Breaks the work into steps, each with its risk and its check.</span>
+              </li>
+              <li class="loop__step loop__step--human" data-step="3">
+                <span class="loop__name">Approve</span>
+                <span class="loop__text">Changes, messages and anything irreversible wait for your explicit yes.</span>
+                <span class="loop__badge" id="approve-badge">Waiting for you</span>
+              </li>
+              <li class="loop__step" data-step="4">
+                <span class="loop__name">Act</span>
+                <span class="loop__text">Runs typed tools with timeouts and cancellation. Stop means stop.</span>
+              </li>
+              <li class="loop__step" data-step="5">
+                <span class="loop__name">Verify</span>
+                <span class="loop__text">Success is judged by evidence from your machine, not by the model's confidence.</span>
+              </li>
+            </ol>
+            <a class="skip-sequence" href="#capabilities">Skip this sequence</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 · Capabilities -->
+      <section class="chapter chapter--capabilities" id="capabilities" data-chapter="4" aria-labelledby="capabilities-title">
+        <div class="chapter__inner chapter__inner--wide">
+          <p class="eyebrow"><span class="eyebrow__num">04</span> Capabilities</p>
+          <h2 id="capabilities-title">One runtime. <em>Many threads.</em></h2>
+          <p class="lede">
+            Every capability plugs into the same tool contract — typed inputs, declared permissions, timeouts, cancellation and
+            evidence — so new skills extend Lumina without bypassing its rules. Select one to find its thread on the loom.
+          </p>
+          <ul class="legend" aria-label="Status legend">
+            <li><span class="status-dot status-dot--working" aria-hidden="true"></span> Working in the private build</li>
+            <li><span class="status-dot status-dot--dev" aria-hidden="true"></span> In development</li>
+            <li><span class="status-dot status-dot--roadmap" aria-hidden="true"></span> On the roadmap</li>
+          </ul>
+          <div class="cap-columns" id="cap-columns"><!-- rendered by capabilities.ts --></div>
+          <p class="fine cap-note">
+            Status reflects the creator's development records as of October 2026. “Working in the private build” means implemented
+            and tested in a single-user build on the creator's own PC — it is not a public release, and individual features carry the
+            limits noted beside them.
+          </p>
+        </div>
+      </section>
+
+      <!-- 05 · Demo -->
+      <section class="chapter chapter--demo" id="demo" data-chapter="5" aria-labelledby="demo-title">
+        <div class="chapter__inner chapter__inner--wide">
+          <p class="eyebrow"><span class="eyebrow__num">05</span> Try it</p>
+          <h2 id="demo-title">Watch a request <em>become a result.</em></h2>
+          <p class="lede">
+            A self-contained simulation of how Lumina handles a request: interpretation, plan, approval, execution and evidence. It
+            runs entirely in your browser on example data.
+          </p>
+          <div class="demo" id="demo-root">
+            <noscript><p class="demo__noscript">The interactive demo needs JavaScript. Everything it shows is also described in the sections above.</p></noscript>
+          </div>
+          <p class="fine">
+            This console is a concept interface built for this site. Lumina's real desktop app looks different; the runtime states,
+            approval gates and evidence trail shown here are modeled on how Lumina's runtime is designed to work.
+          </p>
+        </div>
+      </section>
+
+      <!-- 06 · Explore -->
+      <section class="chapter chapter--explore" id="explore" data-chapter="6" aria-labelledby="explore-title">
+        <div class="explore-stage" id="explore-stage" aria-hidden="true"></div>
+        <div class="chapter__inner chapter__inner--explore">
+          <p class="eyebrow"><span class="eyebrow__num">06</span> Explore</p>
+          <h2 id="explore-title">Walk the <em>tapestry.</em></h2>
+          <p class="lede explore__lede">
+            Everything above, woven together. Choose a thread to follow it<span class="only-3d"> — or drag the loom to look around</span>.
+          </p>
+          <div class="explore" id="explore-ui">
+            <div class="explore__dest" role="group" aria-label="Destinations" id="explore-dest"><!-- rendered by explore-ui.ts --></div>
+            <div class="explore__card" id="explore-card" aria-live="polite"></div>
+            <div class="explore__tools">
+              <button class="btn btn--small btn--ghost" type="button" id="explore-reset">Reset view</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="perf-notice" id="perf-notice" role="status" hidden>
+      <p>The 3D view is running slowly on this device. Lite mode keeps every section and the demo, without the animation.</p>
+      <div class="perf-notice__actions">
+        <button class="btn btn--small btn--primary" type="button" data-act="lite">Switch to Lite</button>
+        <button class="btn btn--small btn--ghost" type="button" data-act="dismiss">Keep 3D</button>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <div class="site-footer__cta">
+          <p class="site-footer__title">Lumina is a private, single-user build.</p>
+          <p class="site-footer__text">
+            There's nothing to download or sign up for yet. The best way to understand it today is to run the demo and read what
+            works now — and what's still being built.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn--primary" href="#demo">Run the demo</a>
+            <a class="btn btn--ghost" href="#capabilities">What works today</a>
+          </div>
+        </div>
+        <div class="site-footer__meta">
+          <p>Lumina — a personal AI companion created by <span data-config="creator">Rochak Adhikari</span>.</p>
+          <p>Typefaces: Instrument Serif and Geist, under the SIL Open Font License. No tracking, no cookies.</p>
+          <p><a href="#top">Back to the top</a></p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

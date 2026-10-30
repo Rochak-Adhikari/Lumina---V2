@@ -35,17 +35,27 @@ class WindowsProvider:
     Timeout after mutation means unknown outcome; callers must inspect, not retry.
     PowerShell/.NET UIA ship with Windows. Unsupported hardware fails explicitly.
     """
-    def __init__(self, timeout=12):
+    def __init__(self, timeout=12, *, authority=None):
         if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 60:
             raise ValueError('timeout must be between 0 and 60 seconds')
         self.timeout = timeout
         self.secret = secrets.token_hex(32)
+        self.authority = authority
 
     def status(self):
         return dict(ok=os.name == 'nt', status='configured' if os.name == 'nt' else 'unavailable',
                     provider='windows-native-uia', visual_fallback=False)
 
     async def request(self, operation, **arguments):
+        if operation.endswith('_apply'):
+            from .control_authority import denied
+            return denied()
+        try:
+            if self.authority is None:
+                raise PermissionError('inspection_authority_required')
+            permit = self.authority.inspection_permit(operation, arguments, consume=True)
+        except PermissionError as exc:
+            return failure(str(exc))
         if os.name != 'nt':
             return failure('unavailable')
         executable = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
@@ -54,13 +64,18 @@ class WindowsProvider:
             return failure('request_too_large')
         process = None
         spawn = asyncio.create_task(asyncio.create_subprocess_exec(
-            str(executable), '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+            # Process scope only, fixed local helper; no persistent policy change.
+            # RemoteSigned still rejects unsigned downloaded scripts; Group Policy wins.
+            str(executable), '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-File',
             str(Path(__file__).with_name('computer_windows_helper.ps1')),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL, creationflags=0x08000000))
         try:
             async with asyncio.timeout(self.timeout):
                 process = await asyncio.shield(spawn)
+                # Stop may race with process creation. Do not deliver a request
+                # to an already launched helper under revoked authority.
+                self.authority.validate_inspection(permit)
                 process.stdin.write(payload)
                 await process.stdin.drain()
                 process.stdin.close()
@@ -78,7 +93,9 @@ class WindowsProvider:
                     raise ComputerError('invalid_response')
                 return result
         except TimeoutError:
-            return failure('timeout', outcome='unknown' if operation.endswith('_apply') else 'not_started')
+            return failure('timeout', outcome='read_incomplete')
+        except PermissionError as exc:
+            return failure(str(exc))
         except (OSError, ValueError):
             return failure('provider_failed', outcome='unknown' if operation.endswith('_apply') else 'not_started')
         finally:
@@ -102,11 +119,24 @@ class ConfirmedService:
     current permission/consequence policy. Never register execute_confirmed as a
     model-callable tool. All mutations request approval, including undo.
     """
-    def __init__(self, provider=None, *, clock=time.monotonic):
-        self.provider = provider or WindowsProvider()
+    inspection_actions = frozenset()
+
+    def __init__(self, provider=None, *, clock=time.monotonic, authority=None):
+        self.provider = provider or WindowsProvider(authority=authority)
+        self.authority = authority
         self.clock = clock
         self.pending = {}
         self.lock = asyncio.Lock()
+
+    @property
+    def authority(self):
+        return self._authority
+
+    @authority.setter
+    def authority(self, value):
+        self._authority = value
+        if isinstance(self.provider, WindowsProvider):
+            self.provider.authority = value
 
     def _prune(self):
         now = self.clock()
@@ -129,9 +159,36 @@ class ConfirmedService:
         return item[2]
 
     async def execute(self, action, **args):
+        if action in self.inspection_actions:
+            if self.authority is None:
+                return failure('inspection_authority_required')
+            return await self.authority.inspect(lambda: self._execute(action, args))
+        return await self._execute(action, args)
+
+    async def _execute(self, action, args):
+        if action == 'execute_confirmed':
+            from .computer_action import SimulationAdapter
+            from .owned_windows import OwnedWindowsAdapter
+            from .external_windows import ExternalWindowsAdapter
+            from .receiver_adapter import ReceiverAdapter
+            from .practice_input import NativePracticeAdapter
+            from .computer_control import IsolatedComputerControl
+            owned = (type(self) is IsolatedComputerControl and
+                     type(self.provider) is OwnedWindowsAdapter and self.native_owned)
+            external = (type(self) is IsolatedComputerControl and
+                        type(self.provider) is ExternalWindowsAdapter and self.native_external)
+            receiver = (type(self) is IsolatedComputerControl and
+                        type(self.provider) is ReceiverAdapter and self.receiver_adapter)
+            practice = (type(self) is IsolatedComputerControl and
+                        type(self.provider) is NativePracticeAdapter and self.native_input)
+            if not isinstance(self.provider, SimulationAdapter) and not owned and not external and not receiver and not practice:
+                from .control_authority import denied
+                return denied()
         async with self.lock:
             acquired = False
             try:
+                if action in self.inspection_actions:
+                    self.authority.check_inspection()
                 if action == 'execute_confirmed':
                     acquired = _MUTATION_LOCK.acquire(blocking=False)
                     if not acquired:
@@ -159,6 +216,10 @@ class ConfirmedService:
             raise ComputerError('invalid_arguments')
 
     async def _call(self, operation, **args):
+        if self.authority is None:
+            return failure('inspection_authority_required')
+        self.authority.inspection_permit(operation, args,
+                                        consume=not isinstance(self.provider, WindowsProvider))
         result = await self.provider.request(operation, **args)
         if not result.get('ok'):
             # Provider owns only fixed error codes, no arbitrary exception messages.

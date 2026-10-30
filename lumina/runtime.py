@@ -13,8 +13,10 @@ from .tools import ToolRegistry
 from .providers.base import ProviderUnavailable
 from .speech import spoken_text, brief_spoken_text
 from .tasks import TaskManager
+from .control_authority import ControlAuthority
 from .memory import MemoryStore
 from .session_log import SessionLog
+from .greeting import clear_ended, default_state_path, greeting_for, write_ended
 from .continuity_commands import ContinuityCommands, SCHEMAS as MEMORY_SCHEMAS, user_evidence, summary as memory_summary
 
 STATES = {"IDLE", "LISTENING", "THINKING", "EXECUTING", "SPEAKING", "INTERRUPTED", "WAITING_FOR_USER", "ERROR"}
@@ -36,8 +38,18 @@ def browser_url(value):
 class Runtime:
     def __init__(self, config, provider=None, workers=None):
         self.config = config
+        self.control_authority = ControlAuthority(config.runtime_root / '.lumina-control-unresolved.json')
+        self.owned_window = None
+        self.owned_controller = None
+        self.owned_client = None
+        self.owned_opening = False
+        self.window_views = {}
+        self.external_adapter = self.external_controller = self.external_owner = None
+        self.receiver_adapter = self.receiver_controller = self.receiver_owner = None
+        self._native_fixture_session = None
+        self.control_authority.register_revoker(lambda reason: self.window_views.clear())
         self.index = FileIndex(config)
-        self.session_log = SessionLog(config.root)
+        self.session_log = SessionLog(config.runtime_root)
         self.session_id = self.session_log.session_id
         self.last_user_event_id = None
         self.last_memory_question = ''
@@ -49,21 +61,28 @@ class Runtime:
         except (OSError, sqlite3.Error, ValueError):
             from .memory import UnavailableMemory
             self.memory = UnavailableMemory()
-        self.tools = ToolRegistry(self.index, self.memory)
+        self.tools = ToolRegistry(self.index, self.memory, authority=self.control_authority)
         self.tools.memory_context = self.memory_context
+        self.tools.runtime = self
+        self.auto_memory_capture = getattr(config, 'auto_memory_capture', True)
+        if hasattr(self.memory, 'rt'):
+            self.memory.rt = self
+        reminders_tz = getattr(getattr(self.tools, 'reminders', None), 'timezone', None)
+        if reminders_tz and hasattr(self.memory, 'timezone'):
+            self.memory.timezone = reminders_tz
         self.continuity_commands = ContinuityCommands(self)
         self._continuity_workspace = None
         self.sync_memory_workspace()
+        from .charter import CharterManager
+        self.charter = CharterManager(self.memory)
+        self.charter.verify_and_audit()
         self.session_log.write('runtime.initialized', provider=config.provider, worker=config.worker,
                                workspace=str(config.root), memory_path=str(self.memory.path) if self.memory.path else None,
                                memory_status=self.memory_operation('status').get('status'))
-        if workers is None and config.worker == "claude":
-            if config.worker_backend=='tmux':
-                from .tmux_worker import TmuxWorker
-                workers={'claude-code':TmuxWorker(config.root,config.worker_executable,config.msys_root,config.agent_limit,config.allow_metered_agents)}
-            else:
-                from .workers import ClaudeCodeWorker
-                workers = {"claude-code": ClaudeCodeWorker(config.root, config.worker_executable, config.worker_timeout)}
+        # M4 never constructs a live worker implicitly; explicit injections are
+        # inventoried by TaskManager, but launch/resume remain denied.
+        if workers is None:
+            workers = {}
         self.provider = provider
         if config.provider == "gemini" and provider is None:
             from .providers.gemini import GeminiProvider
@@ -89,20 +108,555 @@ class Runtime:
         self.announcements = {}
         self.tools.reminders.notify = self._notify_reminder
         self.tools.phase2.notify = self._notify_automation
+        self.tools.brain_dump.on_change = lambda event: self.broadcast(event)
+        self.proactive_dump_capture = False
         self.tools.phase2.busy = lambda: (not self.clients or self.lock.locked() or
             self.state.get('user_speaking') or self.state.get('lumina_speaking') or
             self.state.get('state') in {'LISTENING','THINKING','EXECUTING','SPEAKING','WAITING_FOR_USER'})
         self.agent_summary_tasks = set()
         self.audit = []
         self.tasks = TaskManager(workers, self.agent_event, brief_spoken_text,
-                                 on_continuity=self.continuity_task)
+                                 on_continuity=self.continuity_task, authority=self.control_authority)
         self.tools.worker_status=lambda:[{k:v for k,v in s.items() if k not in {'output','events'}} for s in self.worker_sessions()]
         self.tools.agent_tail=self.read_agent_tail
         self.tools.spawn_agent=self.start_coding_agent
         self.delegation_request=None
         self.last_uploaded_file=None
+        self.greeting_path = Path(getattr(config,'greeting_path','') or default_state_path())
+        self.greeting_pending = bool(getattr(config,'greetings_enabled',True))
+        self.greeting_delivered = False
+        self.session_started = False
         for worker in self.tasks.workers.values():
             if hasattr(worker,'manager'): worker.manager.on_event=self.worker_event
+
+    def native_fixture_session(self, principal):
+        """Trusted local Python owner only; no HTTP, model, health or client-ID path.
+
+        The capability proves this Runtime/session binding, not human identity.
+        It admits only the fixed disposable process family; startup stays disarmed.
+        """
+        from .native_process import NativeFixtureSession
+        if type(principal) is not object or self._native_fixture_session is not None:
+            raise PermissionError('native_fixture_owner_required')
+        session = NativeFixtureSession(self, principal)
+        self._native_fixture_session = session
+        return session
+
+    def simulation_controller(self, observations, adapter, *, owner):
+        """Trusted offline injection only; no tool or HTTP registration."""
+        from .computer_control import IsolatedComputerControl
+        if not isinstance(owner, str) or not owner:
+            raise ValueError('An approval owner is required')
+        return IsolatedComputerControl(observations, adapter,
+            authority=self.control_authority, owner=owner)
+
+    def practice_input_session(self, principal):
+        """Trusted local P2.2 test enrollment only; no HTTP/model registration."""
+        from .practice_input import PracticeSession
+        if getattr(self, '_practice_input_session', None) is not None:
+            raise PermissionError('practice_session_already_created')
+        session = PracticeSession(self, principal)
+        self._practice_input_session = session
+        return session
+
+    async def close_practice_fixture(self):
+        session = getattr(self, '_practice_input_session', None)
+        if session is not None and not await session.close():
+            self.control_authority.note_external_uncertainty()
+            raise RuntimeError('practice_cleanup_unconfirmed')
+
+    def simulation_desktop_task(self, observations, adapter, raw, *, owner, target,
+                                expected_digest, goal_predicate, controller=None,
+                                binding=None, allow_reground=False):
+        """Offline harness only; deliberately absent from HTTP/model registries.
+
+        One typed proposal, existing confirmations/task lifecycle, no native
+        fallback. Does not arm the authority or grant approval on creation.
+        """
+        from .computer_use import SimulatedDesktopTask
+        goal = SimulatedDesktopTask(self, observations, adapter, raw, owner=owner,
+            target=target, expected_digest=expected_digest, goal_predicate=goal_predicate,
+            controller=controller, binding=binding, allow_reground=allow_reground)
+        self.tasks.create_goal(goal)
+        return goal
+
+    async def goal_request(self, connection, body):
+        """Explicit local UI scope only. Never registered as a model action."""
+        from .goals import LocalGoal
+        action=body.get('action')
+        if action=='goal_prepare' and set(body)<={'action','kind','text','planning'}:
+            goal=LocalGoal(self,connection,body.get('kind','clarify'),
+                           text=body.get('text',''),planning=body.get('planning','local'))
+            self.tasks.create_goal(goal)
+        else:
+            required={'action','task_id','confirmation_id'} if action=='goal_approve' else {'action','task_id'}
+            if action not in {'goal_review','goal_approve','goal_pause','goal_cancel','goal_status'} or set(body)!=required:
+                raise ValueError('invalid_goal_request')
+            session=self.tasks._get(body['task_id'])
+            goal=session.goal
+            if goal is None or goal.owner!=connection.client_id:
+                raise PermissionError('goal_owner_mismatch')
+            if action=='goal_approve':
+                if type(body['confirmation_id']) is not str:raise ValueError('invalid_confirmation')
+                return {'ok':True,'task':goal.approve(body['confirmation_id'])}
+            if action in {'goal_pause','goal_cancel'}:
+                return {'ok':True,'task':self.tasks.stop_goal(session.id,owner=connection.client_id,
+                    cancel=action=='goal_cancel')}
+            if action=='goal_status':return {'ok':True,'task':self.tasks.read_agent_session(session.id)}
+        try:
+            return await goal.review()
+        except PermissionError as exc:
+            goal.reason=str(exc)
+            self.tasks._emit(goal.session)
+            return {'ok':False,'reason':goal.reason,'task':self.tasks.read_agent_session(goal.session.id)}
+
+    async def goal_chat(self, connection, text):
+        clean=text.strip()
+        control=re.fullmatch(r'(pause|resume|cancel|status) goal ([a-f0-9]{32})[.!]?',clean,re.I)
+        if control:
+            action={'pause':'goal_pause','resume':'goal_review','cancel':'goal_cancel','status':'goal_status'}[control[1].lower()]
+            body={'action':action,'task_id':control[2].lower()}
+        elif clean.lower().startswith('goal:'):
+            request=clean[5:].strip()
+            write=re.fullmatch(r'write and select scratchpad text:\s*(.*)',request,re.I|re.S)
+            body={'action':'goal_prepare','kind':'scratchpad_text' if write else
+                  'inspect_window' if request.lower().rstrip('.!?')=='inspect selected window' else 'clarify'}
+            if write:body['text']=write[1]
+        else:return False
+        result=await self.goal_request(connection,body)
+        # Literal scratchpad content stays in the owner's private review, not chat history/model context.
+        self.message('user','Local goal request: '+body['action'],capture_memory=False)
+        self.message('assistant','Review the exact task scope in Controls before starting.' if result.get('review') else
+            'Goal status: '+str(result.get('reason') or result.get('task',{}).get('status','unavailable'))+'.',capture_memory=False)
+        self.broadcast({'type':'goal_review','client_id':connection.client_id,'data':result})
+        return True
+
+    async def inspect_windows(self, connection, body):
+        """Existing structured inspection plus optional local perception context.
+
+        No pixels, OCR, provider call, inferred visual match or stored UI text.
+        Structured inspection remains useful when screen sharing is unavailable.
+        """
+        action = body.get('action')
+        stream = getattr(getattr(connection, 'screen_share', None), 'observations', None)
+        evidence = None
+        if stream is not None and stream.latest() is not None:
+            current = stream.latest()
+            evidence = stream.evidence(session_id=current.session_id, minimum_sequence=current.sequence)
+        result = await self._inspect_windows(connection, body)
+        if (result.get('ok') and action in {'list', 'select', 'refresh', 'control'} and
+                evidence is not None and not evidence.valid(stream.clock())):
+            self.window_views.pop(connection.client_id, None)
+            result = {'ok': False, 'error': 'observation_changed_during_inspection'}
+        return {**result, 'inspection_action': action, 'capabilities': self.interaction_capabilities(),
+                'perception': stream.status() if stream is not None else {'observation': 'unavailable', 'analysis': 'disabled'},
+                'evidence': ({'kind': 'structured_ui_with_recent_observation',
+                             'session_id': evidence.session_id, 'source_id': evidence.source_id,
+                             'sequence': evidence.sequence, 'visual_match_verified': False}
+                            if result.get('ok') and evidence is not None else {'kind': 'structured_ui_only'}),
+                'message': self.inspection_message(result)}
+
+    @staticmethod
+    def interaction_capabilities():
+        return {'window_inspection': 'read_only', 'scratchpad': 'owned_surface_only',
+                'third_party_mutation': 'disabled_effect_boundary_unverified',
+                'file_mutation': 'disabled', 'shell': 'disabled', 'raw_input': 'disabled',
+                'uia_toggle': 'disabled', 'browser_mutation': 'disabled'}
+
+    @staticmethod
+    def inspection_message(result):
+        messages = {
+            'observation_changed_during_inspection': 'Screen evidence expired or sharing changed during inspection. Refresh before using this result.',
+            'window_inventory_expired': 'The window list expired. Find windows again.',
+            'window_not_discovered': 'Choose a window from your current window list.',
+            'control_not_discovered': 'Choose a control from the current inspection.',
+            'window_identity_changed': 'The selected window changed. Find windows again.',
+            'ambiguous_target': 'The inspection returned duplicate target identities. No target was selected.',
+            'inspection_revoked': 'Inspection was stopped or replaced. Resume read-only inspection to continue.',
+            'inspection_suspended': 'Control is stopped. Resume read-only inspection to continue.',
+            'inspection_timeout': 'Window inspection timed out. No action was performed.',
+            'timeout': 'Window inspection timed out. No action was performed.',
+            'provider_failed': 'Windows inspection is unavailable. No action was performed.',
+        }
+        error = result.get('error')
+        if error: return messages.get(error, 'This inspection is unavailable. No action was performed.')
+        if 'windows' in result: return f"Found {len(result['windows'])} windows. Choose one to inspect; selecting it does not focus or change it."
+        if 'controls' in result: return f"Read {len(result['controls'])} accessible controls. Editable values are redacted. No application change was performed."
+        return {'admission_stopped': 'Control stopped; screen sharing continues.',
+                'inspection_resumed': 'Read-only inspection resumed; application changes remain disabled.',
+                'inspection_resume_blocked': 'Inspection cleanup is still pending.',
+                'selection_cleared': 'Window selection cleared.'}.get(result.get('status'), '')
+
+    async def window_chat(self, connection, text):
+        """Exact local user commands, not screen instructions or model grants."""
+        clean = text.strip().lower().rstrip('.!?')
+        commands = {'list windows': 'list', 'inspect windows': 'list',
+                    'inspect selected window': 'refresh', 'refresh window controls': 'refresh',
+                    'resume window inspection': 'resume'}
+        numbered = re.fullmatch(r'inspect window ([1-9][0-9]{0,2})', clean)
+        if clean not in commands and numbered is None: return False
+        body = {'action': commands.get(clean, 'select')}
+        if numbered:
+            view = self.window_views.get(connection.client_id, {})
+            rows = view.get('ordered_windows', [])
+            index = int(numbered[1]) - 1
+            body['window'] = rows[index] if index < len(rows) else ''
+        self.message('user', text, capture_memory=False)
+        result = await self.inspect_windows(connection, body)
+        answer = result['message']
+        if result.get('windows'):
+            answer += ' Use Inspect Windows to view names, or say “inspect window 1” for the first result.'
+        if result.get('ok') and 'controls' in result:
+            roles = sorted({str(row.get('role', 'unknown'))[:60] for row in result['controls']})
+            # Fixed counts only in conversation history. UI labels stay in the
+            # requesting client's transient dialog; no new memory/transmission.
+            answer += f' {len(roles)} control types were reported.'
+        perception = result['perception']
+        if body['action'] in {'list', 'select', 'refresh'}:
+            answer += (' A recent shared observation is available; this answer uses structured UI data, not model vision.'
+                       if result.get('evidence', {}).get('kind') == 'structured_ui_with_recent_observation'
+                       else ' No fresh shared image was used; this is structured UI inspection only.')
+        self.message('assistant', answer, capture_memory=False)
+        self.broadcast({'type': 'window_inspection', 'client_id': connection.client_id, 'data': result})
+        return True
+
+    async def _inspect_windows(self, connection, body):
+        """Client-owned read-only selection. Never grants action/focus authority."""
+        import os
+        action = body.get('action')
+        if isinstance(action,str) and action.startswith('external_'):
+            return await self.external_fixture_action(connection,body)
+        if isinstance(action,str) and action.startswith('receiver_'):
+            return await self.receiver_fixture_action(connection,body)
+        required = ({'action', 'window'} if action == 'select' else
+                    {'action', 'control'} if action == 'control' else {'action'})
+        optional = {'scope'} if action == 'list' else set()
+        if (action not in {'list', 'select', 'refresh', 'control', 'clear', 'resume', 'stop', 'takeover'} or
+                set(body) - required - optional or required - set(body)):
+            raise ValueError('invalid_window_inspection')
+        owner = connection.client_id
+        authority = self.control_authority
+        if action in {'stop', 'takeover'}:
+            authority.stop('user_takeover' if action == 'takeover' else 'emergency_stop')
+            return {'ok': True, 'status': 'admission_stopped', 'perception_stopped': False,
+                    'inspections_pending': authority.status()['inspections_pending'],
+                    **({'receiver':self.receiver_adapter.status()} if self.receiver_adapter is not None else {})}
+        authority.cancel_inspections(owner)
+        if action == 'clear':
+            self.window_views.pop(owner, None)
+            return {'ok': True, 'status': 'selection_cleared'}
+        if action == 'resume':
+            self.window_views.pop(owner, None)
+            resumed = authority.resume_inspection()
+            return {'ok': resumed, 'read_only': True,
+                    'status': 'inspection_resumed' if resumed else 'inspection_resume_blocked',
+                    'mutation_supported': False}
+        if authority.mode == 'closed':
+            return {'ok': False, 'error': 'runtime_closed'}
+        service = self.tools.phase2.services['computer_control']
+        # Request identity prevents a slow prior response replacing a newer selection.
+        previous = self.window_views.get(owner)
+        if action == 'list':
+            scope = body.get('scope', 'external_fixture' if self.external_owner == owner else 'desktop')
+            if scope not in {'desktop', 'scratchpad', 'external_fixture'}:
+                raise ValueError('invalid_window_scope')
+            if scope == 'scratchpad' and (self.owned_client != owner or self.owned_window is None):
+                return {'ok': False, 'error': 'owned_window_owner_mismatch'}
+            if scope == 'external_fixture' and (self.external_owner != owner or self.external_adapter is None):
+                return {'ok': False, 'error': 'external_fixture_not_registered_for_client'}
+            if owner not in self.window_views and len(self.window_views) >= 64:
+                return {'ok': False, 'error': 'inspection_capacity'}
+            view = {'windows': set(), 'controls': set(), 'selected': None, 'at': time.monotonic()}
+            arguments = ({'process_id': os.getpid()} if scope == 'scratchpad' else
+                         {'process_id': self.external_adapter.registration.pid} if scope == 'external_fixture' else {})
+            operation = 'list_windows'
+        else:
+            if previous is None or not 0 <= time.monotonic() - previous['at'] < 60:
+                self.window_views.pop(owner, None)
+                return {'ok': False, 'error': 'window_inventory_expired'}
+            selected = body.get('window') if action == 'select' else previous['selected']
+            if not isinstance(selected, str) or selected not in previous['windows']:
+                return {'ok': False, 'error': 'window_not_discovered'}
+            view = {**previous, 'selected': selected}
+            arguments, operation = {'window': selected}, 'inspect'
+            if action == 'control':
+                control = body['control']
+                if not isinstance(control, str) or control not in previous.get('controls', set()):
+                    return {'ok': False, 'error': 'control_not_discovered'}
+                arguments['control'], operation = control, 'inspect_control'
+        self.window_views[owner] = view
+        boundary = (authority.epoch, authority.generation)
+        from .control_authority import inspection_owner
+        owner_token = inspection_owner.set(owner)
+        try:
+            # The request owns this bounded read; cancellation propagates to the
+            # existing provider's kill/reap finally. It is not an effect-producing
+            # authority job and must not quarantine an unrelated verified action.
+            result = await service.execute(operation, **arguments)
+        except BaseException:
+            if self.window_views.get(owner) is view:
+                self.window_views.pop(owner, None)
+            raise
+        finally:
+            inspection_owner.reset(owner_token)
+        if (self.window_views.get(owner) is not view or
+                boundary != (authority.epoch, authority.generation) or authority.mode == 'closed'):
+            return {'ok': False, 'error': 'inspection_revoked'}
+        if not result.get('ok'):
+            self.window_views.pop(owner, None)
+            return {'ok': False, 'error': result.get('error', 'inspection_unavailable')}
+        if action == 'list':
+            rows = result.get('windows', [])[:128]
+            if len({row['id'] for row in rows}) != len(rows):
+                self.window_views.pop(owner, None)
+                return {'ok': False, 'error': 'ambiguous_target'}
+            view['windows'] = {row['id'] for row in rows}
+            view['ordered_windows'] = [row['id'] for row in rows]
+            view['at'] = time.monotonic()
+            return {'ok': True, 'windows': rows, 'read_only': True, 'limit': 128}
+        if result.get('window') != view['selected']:
+            self.window_views.pop(owner, None)
+            return {'ok': False, 'error': 'window_identity_changed'}
+        controls = result.get('controls', [])
+        if len({row['id'] for row in controls}) != len(controls):
+            self.window_views.pop(owner, None)
+            return {'ok': False, 'error': 'ambiguous_target'}
+        view['controls'] = {row['id'] for row in controls}
+        # Do not expose legacy snapshot tokens as a new mutation capability.
+        public = {k: v for k, v in {**result, 'read_only': True,
+                'mutation_supported': False}.items() if k != 'snapshot'}
+        adapter = self.external_adapter
+        if adapter is not None and self.external_owner == owner and view['selected'].startswith(
+                f'{adapter.registration.window}:{adapter.registration.pid}:'):
+            public['fixture_controls'] = [row['id'] for row in result.get('controls', [])
+                                         if row.get('native_hwnd') == adapter.registration.control]
+            public['fixture_buttons'] = [{'id':row['id'],'operation':adapter.button_operations()[row['native_hwnd']]}
+                                         for row in result.get('controls',[]) if row.get('native_hwnd') in adapter.button_operations()]
+            from .fixture_toggle import NATIVE_TOGGLE_READY
+            public['fixture_toggles'] = [row['id'] for row in result.get('controls',[])
+                if NATIVE_TOGGLE_READY and adapter.registration.toggle is not None and row.get('native_hwnd')==adapter.registration.toggle]
+            if adapter.registration.toggle is not None and not NATIVE_TOGGLE_READY:
+                public['toggle_unavailable']='Native checkbox control is not validated; inspection remains available.'
+        return public
+
+    def register_external_fixture(self, connection, process, registration):
+        """Trusted isolated-harness injection only. No HTTP/tool enrollment route.
+
+        This does not arm control or resolve existing uncertainty. The caller
+        owns creation and cleanup of the independent disposable process.
+        """
+        from .external_windows import ExternalWindowsAdapter
+        from .computer_control import IsolatedComputerControl
+        if self.external_adapter is not None or self.control_authority.quarantined:
+            raise PermissionError('external_registration_unavailable')
+        adapter = ExternalWindowsAdapter(self.control_authority,connection.screen_share.observations,
+                    self.tools.phase2.services['computer_control'],process,registration)
+        self.external_adapter = adapter
+        self.external_owner = connection.client_id
+        self.external_controller = IsolatedComputerControl(adapter.observations,adapter,
+                    authority=self.control_authority,owner=connection.client_id,timeout=5)
+        return adapter
+
+    async def external_fixture_action(self, connection, body):
+        from .external_windows import INITIAL, EDITED, digest
+        adapter,core = self.external_adapter,self.external_controller
+        if adapter is None or core is None or connection.client_id != self.external_owner:
+            return {'ok':False,'error':'external_fixture_not_registered_for_client'}
+        action=body.get('action')
+        edit_proposal=action=='external_propose' and set(body)=={'action','control','restore'} and type(body['restore']) is bool
+        button_proposal=action=='external_button_propose' and set(body)=={'action','control','operation'} and body['operation'] in ('increment_external_fixture','reset_external_fixture')
+        toggle_proposal=action=='external_toggle_propose' and set(body)=={'action','control'}
+        if toggle_proposal:
+            from .fixture_toggle import NATIVE_TOGGLE_READY
+            if not NATIVE_TOGGLE_READY:return {'ok':False,'error':'native_toggle_not_validated'}
+        if edit_proposal or button_proposal or toggle_proposal:
+            view=self.window_views.get(connection.client_id)
+            if (view is None or not 0 <= time.monotonic()-view['at'] < 60 or
+                    not isinstance(body['control'],str) or body['control'] not in view.get('controls',set())):
+                return {'ok':False,'error':'external_control_not_discovered'}
+            self.control_authority.check()
+            await adapter.refresh(view['selected'],body['control'])
+            if toggle_proposal:
+                expected=adapter.toggle_postcondition(adapter.current_value)
+                prepared=core.propose('toggle_external_fixture',adapter.target,expected_digest=digest(expected))
+                return {**prepared,'review':{'window':adapter.target.window_id,'control':adapter.target.control_id,
+                    'operation':'toggle_external_fixture','before':adapter.current_value,'after':expected,
+                    'scope':'registered disposable checkbox only; restoration requires separate approval'}}
+            if button_proposal:
+                operation=body['operation']
+                expected=adapter.button_postcondition(operation,adapter.current_value)
+                prepared=core.propose(operation,adapter.target,expected_digest=digest(expected))
+                return {**prepared,'review':{'window':adapter.target.window_id,'control':adapter.target.control_id,
+                    'operation':operation,'before':adapter.current_value,'after':expected,
+                    'scope':'registered disposable counter only'}}
+            value=INITIAL if body['restore'] else EDITED
+            prepared=core.propose('set_external_fixture',adapter.target,expected_digest=digest(value),text=value)
+            return {**prepared,'review':{'window':adapter.target.window_id,'control':adapter.target.control_id,
+                                        'value':value,'scope':'registered disposable test field only'}}
+        if action=='external_approve' and set(body)=={'action','action_id','confirmation','request'}:
+            if not all(isinstance(body[k],str) for k in ('action_id','confirmation')) or not isinstance(body['request'],dict):
+                raise ValueError('invalid_external_approval')
+            try: pending=core.snapshot(body['action_id'])
+            except KeyError: return {'ok':False,'error':'unknown_action'}
+            if pending['state']!='awaiting_approval':
+                return {'ok':False,'error':'approval_not_pending'}
+            accepted=core.approve(body['action_id'],body['confirmation'],body['request'],owner=connection.client_id)
+            if accepted.get('state')!='approved': return accepted
+            return await core.execute('execute_confirmed',action_id=body['action_id'],request=body['request'])
+        if action=='external_deny' and set(body)=={'action','action_id'} and isinstance(body['action_id'],str):
+            core.cancel_action(body['action_id'])
+            return {'ok':True,'status':'proposal_cancelled'}
+        if action=='external_status' and set(body)=={'action','action_id'} and isinstance(body['action_id'],str):
+            try:result=core.snapshot(body['action_id'])
+            except KeyError:return {'ok':False,'error':'unknown_action'}
+            return {key:result[key] for key in ('action_id','state','reason','outcome','semantic','cancellation','cleanup')}
+        raise ValueError('invalid_external_request')
+
+    async def close_external_fixture(self):
+        if self.external_adapter is None: return {'ok':True,'settled':True}
+        self.control_authority.stop()
+        await self.external_controller.close()
+        result=await self.external_adapter.close()
+        if result['settled']:
+            self.external_adapter=self.external_controller=self.external_owner=None
+        return result
+
+    async def register_receiver_fixture(self, connection, process, registration):
+        """Trusted disposable-harness injection; never an HTTP/model enroll API."""
+        from .receiver_adapter import ReceiverAdapter
+        from .computer_control import IsolatedComputerControl
+        if self.receiver_adapter is not None or self.control_authority.quarantined:
+            raise PermissionError('receiver_registration_unavailable')
+        adapter=ReceiverAdapter(self.control_authority,connection.screen_share.observations,
+                                process,registration,owner=connection.client_id)
+        self.receiver_adapter,self.receiver_owner=adapter,connection.client_id
+        self.receiver_controller=IsolatedComputerControl(adapter.observations,adapter,
+                                    authority=self.control_authority,owner=connection.client_id)
+        await adapter.open()
+        return adapter
+
+    async def receiver_fixture_action(self, connection, body):
+        from .receiver_adapter import digest
+        from .receiver_protocol import OPERATION
+        adapter,core=self.receiver_adapter,self.receiver_controller
+        if adapter is None or core is None or connection.client_id!=self.receiver_owner:
+            return {'ok':False,'error':'receiver_not_registered_for_client'}
+        action=body.get('action')
+        if action in ('receiver_inspect','receiver_propose') and set(body)=={'action'}:
+            state=await adapter.refresh()
+            if action=='receiver_inspect':return {'ok':True,'fixture':adapter.registration.fixture,'state':state}
+            after=dict(value='ready',revision=state['revision']+1)
+            result=core.propose(OPERATION,adapter.target,expected_digest=digest(after))
+            return {**result,'review':{'operation':OPERATION,'fixture':adapter.registration.fixture,
+                    'before':state,'after':after,'scope':'disposable receiver only'}}
+        if action=='receiver_approve' and set(body)=={'action','action_id','confirmation','request'}:
+            if not all(isinstance(body[k],str) for k in ('action_id','confirmation')) or not isinstance(body['request'],dict):
+                raise ValueError('invalid_receiver_approval')
+            try:pending=core.snapshot(body['action_id'])
+            except KeyError:return {'ok':False,'error':'unknown_action'}
+            if pending['state']!='awaiting_approval':
+                return {'ok':False,'error':'approval_not_pending'}
+            accepted=core.approve(body['action_id'],body['confirmation'],body['request'],owner=connection.client_id)
+            if accepted.get('state')!='approved':return accepted
+            return await core.execute('execute_confirmed',action_id=body['action_id'],request=body['request'])
+        if action in ('receiver_status','receiver_deny','receiver_reconcile') and set(body)=={'action','action_id'} and isinstance(body['action_id'],str):
+            if body['action_id'] not in core._actions:return {'ok':False,'error':'unknown_action'}
+            if action=='receiver_deny':core.cancel_action(body['action_id'])
+            if action=='receiver_reconcile':
+                # Evidence only: cannot resume, retry, alter terminal action or clear quarantine.
+                return await adapter.reconcile(core._actions[body['action_id']].spec)
+            return {**core.snapshot(body['action_id']),'receiver':adapter.status()}
+        raise ValueError('invalid_receiver_request')
+
+    async def close_receiver_fixture(self):
+        if self.receiver_adapter is None:return {'ok':True,'settled':True}
+        self.control_authority.stop()
+        await self.receiver_controller.close()
+        result=await self.receiver_adapter.close()
+        if result['settled']:
+            self.receiver_adapter=self.receiver_controller=self.receiver_owner=None
+        return result
+
+    async def owned_window_action(self, connection, body):
+        """Explicit application UI only. No model registration or arbitrary target.
+
+        Low-risk policy: at most 2048 literal characters on our ephemeral surface.
+        HTTP token is CSRF protection, never evidence of human authentication.
+        """
+        from .owned_windows import OwnedWindowsAdapter, text_digest
+        from .computer_control import IsolatedComputerControl
+        action = body.get('action')
+        if set(body) != ({'action', 'text'} if action == 'set_text' else {'action'}):
+            raise ValueError('invalid_owned_request')
+        if action == 'open':
+            if self.owned_window is not None or self.owned_opening:
+                return {'ok': False, 'error': 'owned_window_already_open'}
+            if self.control_authority.quarantined or self.control_authority.mode == 'closed':
+                return {'ok': False, 'error': 'unresolved_control_state'}
+            if connection.screen_share.observations.latest() is None:
+                return {'ok': False, 'error': 'fresh_shared_observation_required'}
+            self.owned_opening = True
+            adapter = OwnedWindowsAdapter(self.control_authority, connection.screen_share.observations,
+                                           arm=self.arm_owned_window)
+            self.owned_window, self.owned_client = adapter, connection.client_id
+            try:
+                result = await adapter.open()
+                self.owned_controller = IsolatedComputerControl(adapter.observations, adapter,
+                    authority=self.control_authority, owner=connection.client_id, timeout=8)
+                return {**result, 'armed': False,
+                        'message': 'Use Enable local scratchpad in the native window. Other applications remain disabled.'}
+            except BaseException:
+                await self.close_owned_window()
+                raise
+            finally:
+                self.owned_opening = False
+        if self.owned_client != connection.client_id or self.owned_window is None:
+            return {'ok': False, 'error': 'owned_window_owner_mismatch'}
+        if action == 'stop':
+            self.control_authority.stop()
+            return {'ok': True, 'status': 'admission_stopped', 'perception_stopped': False,
+                    'unresolved': self.control_authority.status()['unresolved'],
+                    'receiver_pending': sum(not f.done() for f in self.owned_window.pending)}
+        if action == 'close':
+            return await self.close_owned_window()
+        if action == 'status':
+            return {'ok': True, 'control': self.control_authority.status(),
+                    'closed': self.owned_window.closed.is_set(), 'scope': 'owned_window_only'}
+        if action not in {'set_text', 'clear', 'select_all'}:
+            raise ValueError('invalid_owned_request')
+        text = body.get('text') if action == 'set_text' else None
+        if action == 'set_text' and (not isinstance(text, str) or len(text) > 2048 or '\x00' in text):
+            raise ValueError('invalid_owned_request')
+        core, adapter = self.owned_controller, self.owned_window
+        if core is None:
+            return {'ok': False, 'error': 'owned_window_not_ready'}
+        self.control_authority.check()
+        observed = await adapter.inspect()
+        operation = {'set_text': 'set_owned_text', 'clear': 'clear_owned_text', 'select_all': 'select_owned_text'}[action]
+        expected = observed['select_all_digest'] if action == 'select_all' else text_digest(text if text is not None else '')
+        proposal = core.propose(operation, adapter.target, expected_digest=expected, text=text)
+        # Derived policy applies only to this exact nonpersistent owned surface.
+        # No consequential/sensitive operation can enter through this endpoint.
+        core.approve(proposal['action_id'], proposal['confirmation'], proposal['request'], owner=self.owned_client)
+        return await core.execute('execute_confirmed', action_id=proposal['action_id'], request=proposal['request'])
+
+    def arm_owned_window(self):
+        core = self.owned_controller
+        if core is None or self.owned_window.closed.is_set() or core.observations.latest() is None:
+            return False
+        if core.mode != 'running':
+            return core.resume()['ok']
+        return self.control_authority.resume()
+
+    async def close_owned_window(self):
+        self.control_authority.stop()
+        if self.owned_controller:
+            await self.owned_controller.close()
+        result = await self.owned_window.close() if self.owned_window else {'ok': True, 'settled': True}
+        # Retain uncertain ownership rather than replacing it with a fresh window.
+        if result['settled']:
+            self.owned_window = self.owned_controller = self.owned_client = None
+        return result
 
     def memory_context(self):
         return {'session_id': self.session_id, 'project_id': self.project_id,
@@ -116,10 +670,12 @@ class Runtime:
             result = getattr(self.memory, operation)(*args, **kwargs)
             if isinstance(result, dict) and result.get('ok') is False:
                 self.continuity_error = 'Memory could not persist or retrieve this operation.'
-            if operation in {'propose','remember','correct','consolidate','continuation','forget'}:
+            if operation in {'propose','remember','correct','consolidate','continuation','forget','reject_candidate','defer_candidate','daily_reflection'}:
                 self.session_log.write('continuity.'+operation,ok=result.get('ok') if isinstance(result,dict) else None,
                     decision=result.get('decision') if isinstance(result,dict) else None)
             return result
+        except ValueError as exc:
+            return {'ok': False, 'error': str(exc)}
         except Exception:
             self.continuity_error = 'Memory is unavailable; no save was confirmed.'
             self.session_log.write('continuity.unavailable', operation=operation)
@@ -152,6 +708,64 @@ class Runtime:
             self.last_user_event_id = result.get('id')
             self.memory.last_user_event_id = self.last_user_event_id
         return self.last_user_event_id
+
+    def process_memory_message(self, text, source_event_id=None):
+        """Processes incoming user message through multi-chunk extraction and manifest tracking."""
+        import hashlib
+        from .continuity.chunker import MessageChunker
+        from .continuity.manifest import ExtractionManifest
+        from .continuity.extractor import MemoryExtractor
+
+        source_id = source_event_id or self.last_user_event_id
+        if not source_id:
+            source_id = self.capture_user_evidence(text)
+        if not source_id:
+            return {'ok': False, 'error': 'Could not record user evidence.'}
+
+        chunker = MessageChunker(target_chars=800, max_chars=1400, overlap_chars=100)
+        chunks = chunker.chunk_message(text, message_id=str(self.message_id))
+        if not chunks:
+            return {'ok': True, 'count': 0, 'candidates': []}
+
+        manifest = ExtractionManifest.create_from_chunks(
+            str(self.message_id),
+            hashlib.sha256(text.encode()).hexdigest()[:12],
+            chunks,
+            repo=getattr(self.memory, 'repo', None)
+        )
+
+        extractor = MemoryExtractor(user_id=getattr(self.memory, 'user_id', 'local-user'))
+        chunk_candidate_batches = []
+
+        for chunk in chunks:
+            manifest.start_chunk(chunk.chunk_id)
+            try:
+                candidates = extractor.extract_candidates_from_text(
+                    chunk.text,
+                    source_event_id=source_id,
+                    chunk_index=chunk.index,
+                    source_span=(chunk.start_char, chunk.end_char)
+                )
+                chunk_candidate_batches.append(candidates)
+                manifest.record_chunk_result(chunk.chunk_id, candidate_ids=[c.get('predicate', '') for c in candidates])
+            except Exception as exc:
+                manifest.record_chunk_result(chunk.chunk_id, error=str(exc))
+
+        reconciled = extractor.reconcile_candidates(chunk_candidate_batches)
+        if not reconciled:
+            manifest.status = 'completed'
+            manifest.persist()
+            return {'ok': True, 'count': 0, 'manifest': manifest.get_summary()}
+
+        prop_res = self.tools.continuity.execute('memory_propose', {'proposals': reconciled}, online=False)
+        manifest.status = 'completed'
+        manifest.persist()
+        return {
+            'ok': prop_res.get('ok', True),
+            'proposals': reconciled,
+            'result': prop_res,
+            'manifest': manifest.get_summary()
+        }
 
     def continuity_task(self, event):
         self.sync_memory_workspace()
@@ -231,6 +845,11 @@ class Runtime:
 
     def agent_event(self, event):
         data = event['data']
+        if data.get('kind')=='local_goal':
+            # Same task event channel, no task contents sent to memory or spoken summaries.
+            self.audit_event('local_goal',data['status'].lower(),task_id=data['task_id'])
+            self.broadcast(event)
+            return
         self.audit_event('agent_task', data['status'].lower(), worker=data['worker'], task_id=data['task_id'])
         if data['status'] in {'COMPLETED','ERROR'} and self.tools.phase2.automation.status().get('settings',{}).get('enabled'):
             kind='worker_completed' if data['status']=='COMPLETED' else 'worker_failed'
@@ -324,7 +943,8 @@ class Runtime:
             self.message('assistant',f"There are {len(result.get('files',[]))} uploaded files available in your workspace, sir." if result.get('ok') else result['error'])
             self.set_state('IDLE');return True
         if clean.lower().rstrip('.!') in {'confirm','yes confirm','allow the capture','approve','yes','yeah'}:
-            pending=[key for key,value in self.tools.pending.items() if value['expires']>time.monotonic()]
+            pending=[key for key,value in self.tools.pending.items() if value['expires']>time.monotonic()
+                     and self.tools.spoken_confirmation_allowed(key)]
             if len(pending)==1:
                 self.message('user',text)
                 async with self.lock:await self.confirm_action(pending[0],speak=speak,output_client=output_client)
@@ -590,7 +1210,7 @@ class Runtime:
         self.set_state('EXECUTING',current_tool=name)
         self.broadcast({'type':'analysis_progress','client_id':output_client,'stage':'processing','tool':name})
         try:
-            result=await self.tools.confirm(confirmation_id)
+            result=await self.tools.confirm(confirmation_id, owner=output_client)
             self.continuity_tool(name, result)
             image_data=result.pop('image_data',None)
             question=pending.get('analysis')
@@ -658,7 +1278,8 @@ class Runtime:
         self.broadcast({"type": "state", "data": self.snapshot()})
 
     def snapshot(self):
-        return {**self.state, "graph_revision": self.graph["revision"], "messages": self.messages[-40:]}
+        return {**self.state, "graph_revision": self.graph["revision"], "messages": self.messages[-40:],
+                "control_safety": self.control_authority.status()}
 
     def broadcast(self, event):
         for queue in tuple(self.clients):
@@ -783,4 +1404,32 @@ class Runtime:
     def close_session_log(self):
         self.memory_operation('consolidate', session_id=self.session_id)
         self.session_log.close()
+
+    def record_normal_end(self):
+        """A confirmed clean shutdown is the only source of a return greeting."""
+        self.greeting_pending = False
+        return write_ended(self.greeting_path, datetime.now().astimezone())
+
+    def deliver_greeting(self):
+        """At most one greeting per application session; reconnects cannot repeat it.
+
+        Eligibility (time band and 30-minute return window) is evaluated here,
+        at delivery time, using the actual local time — never at boot, so a
+        delayed first connection cannot produce a stale greeting.
+
+        The greeting text is always surfaced in the conversation and queued as
+        an announcement. Spoken delivery through the configured TTS pipeline is
+        attempted by the owning WebSocket connection (see ``VoiceConnection``);
+        a failure to speak preserves the text and is logged once, never retried.
+        """
+        if self.greeting_delivered or not self.greeting_pending:
+            return None
+        text = greeting_for(self.greeting_path, datetime.now().astimezone())
+        self.greeting_delivered = True
+        self.session_log.write('greeting.delivered', text=text)
+        self.message('assistant', text, capture_memory=False)
+        self.queue_announcement(text)
+        if text == 'Welcome back, sir.':
+            clear_ended(self.greeting_path)
+        return text
 

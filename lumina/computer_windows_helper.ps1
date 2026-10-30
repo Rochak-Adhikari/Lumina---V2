@@ -3,13 +3,29 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $r = [Console]::In.ReadToEnd() | ConvertFrom-Json
+if ($r.operation -in @('control_apply','settings_apply')) {
+ [Console]::Out.Write('{"ok":false,"status":"live_effects_disabled","outcome":"not_started"}')
+ exit
+}
 $mutating = $false
 try {
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
-Add-Type -TypeDefinition @"
+Add-Type -AssemblyName UIAutomationClientsideProviders
+# UIA's legacy proxy loader inspects caller types. A PowerShell dynamic call can
+# have no reflected type and throw before loading standard Edit/Button proxies.
+# Enter through a typed, non-inlined frame instead of altering private UIA state.
+Add-Type -ReferencedAssemblies @([Windows.Automation.ClientSettings].Assembly.Location,
+ [Windows.Automation.AutomationPattern].Assembly.Location,
+ [UIAutomationClientsideProviders.UIAutomationClientSideProviders].Assembly.Location,
+ [Windows.Rect].Assembly.Location) -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public static class LuminaNative {
+ [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+ public static void InitializeAutomation() {
+  System.Windows.Automation.ClientSettings.RegisterClientSideProviderAssembly(
+   typeof(UIAutomationClientsideProviders.UIAutomationClientSideProviders).Assembly.GetName());
+ }
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
@@ -26,6 +42,7 @@ public static class LuminaNative {
  public static uint InputTick() {var i=new LASTINPUTINFO(); i.size=8; if(!GetLastInputInfo(ref i)) throw new Exception(); return i.tick;}
 }
 "@
+[LuminaNative]::InitializeAutomation()
 [void][LuminaNative]::SetProcessDpiAwarenessContext([IntPtr](-4))
 function Fail($code) { throw [InvalidOperationException]::new($code) }
 function Json($value) { ConvertTo-Json -InputObject $value -Depth 25 -Compress }
@@ -46,7 +63,11 @@ function Identity($e) {
 }
 function Windows {
  $all=[Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.Condition]::TrueCondition)
- $rows=@(); foreach($e in $all) { try { if($e.Current.NativeWindowHandle -ne 0) { $rows+=@{id=(Identity $e); name=$e.Current.Name; hwnd=$e.Current.NativeWindowHandle} } } catch {} }
+ $rows=@(); foreach($e in $all) { try {
+  if($null -ne $r.process_id -and $e.Current.ProcessId -ne $r.process_id){continue}
+  if($e.Current.NativeWindowHandle -ne 0) { $rows+=@{id=(Identity $e); name=$e.Current.Name; hwnd=$e.Current.NativeWindowHandle} }
+  if($rows.Count -ge 128){break}
+ } catch {} }
  return $rows
 }
 function Window($id) {
@@ -57,13 +78,14 @@ function Window($id) {
 }
 function Control($e) {
  $c=$e.Current; $patterns=@($e.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName.Replace('PatternIdentifiers.Pattern','').Replace('Pattern','') })
- $private=$c.IsPassword -or $c.ControlType -eq [Windows.Automation.ControlType]::Edit -or $patterns -contains 'Value'
+ $private=$c.IsPassword -or $c.ControlType -eq [Windows.Automation.ControlType]::Edit -or $c.ClassName -eq 'Edit' -or $patterns -contains 'Value' -or $patterns -contains 'Text'
  $b=$c.BoundingRectangle
- $state=@{id=([string]::Join('.', $e.GetRuntimeId())); name=$(if($private){'[redacted]'}else{$c.Name}); automation_id=$c.AutomationId; role=$c.ControlType.ProgrammaticName; enabled=$c.IsEnabled; password=$c.IsPassword; offscreen=$c.IsOffscreen; patterns=$patterns; bounds=@($b.X,$b.Y,$b.Width,$b.Height)}
+ $state=@{id=([string]::Join('.', $e.GetRuntimeId())); name=$(if($private){'[redacted]'}else{$c.Name}); automation_id=$c.AutomationId; class_name=$c.ClassName; role=$c.ControlType.ProgrammaticName; enabled=$c.IsEnabled; password=$c.IsPassword; offscreen=$c.IsOffscreen; patterns=$patterns; bounds=@($b.X,$b.Y,$b.Width,$b.Height)}
  if($patterns -contains 'Value' -and -not $c.IsPassword) {
   $v=$e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current
   $state.value_binding=Hash $v.Value; $state.readonly=$v.IsReadOnly
  }
+ $state.native_hwnd=$c.NativeWindowHandle; $state.process_id=$c.ProcessId
  if($patterns -contains 'Toggle') { $state.toggle=[int]$e.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState }
  return $state
 }

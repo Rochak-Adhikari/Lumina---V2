@@ -1,0 +1,13 @@
+{
+  "name": "Lumina",
+  "short_name": "Lumina",
+  "description": "A voice-first, local-first personal AI companion for Windows.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#07080b",
+  "theme_color": "#07080b",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

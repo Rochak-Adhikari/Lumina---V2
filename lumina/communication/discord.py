@@ -1,3 +1,4 @@
+from ..control_authority import blocked_effect
 from urllib.parse import quote
 from .base import request,CommunicationError
 
@@ -27,6 +28,7 @@ class Discord:
         await self.api('GET','channels/'+channel)
         if not 1<=len(content)<=2000:raise CommunicationError('invalid_content','Discord text must contain 1–2000 characters.')
         return {'destination':channel,'content':content,'message_id':message_id}
+    @blocked_effect
     async def send(self,destination,content,message_id=''):
         payload={'content':content,'allowed_mentions':{'parse':[]}}
         if message_id:payload['message_reference']={'message_id':message_id.split(':')[1]}

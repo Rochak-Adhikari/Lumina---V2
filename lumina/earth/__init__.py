@@ -1,0 +1,58 @@
+"""Lumina Earth package — Geographic foundation and zero-budget data adapters."""
+from .weather import (
+    WeatherError,
+    WeatherValidationError,
+    WeatherTimeoutError,
+    WeatherHTTPError,
+    WeatherMalformedResponseError,
+    WeatherProviderError,
+    CurrentWeather,
+    DailyForecastDay,
+    WeatherReport,
+    OpenMeteoWeatherAdapter,
+)
+from .geocoding import (
+    GeocodingError,
+    GeocodingValidationError,
+    GeocodingTimeoutError,
+    GeocodingHTTPError,
+    GeocodingMalformedResponseError,
+    GeocodingProviderError,
+    GeocodingCandidate,
+    GeocodingSearchResult,
+    GeocodingAdapter,
+    OpenMeteoGeocodingAdapter,
+)
+from .history import (
+    HistoryError,
+    HistoryValidationError,
+    HistoryNotFound,
+    SearchHistoryStore,
+)
+
+__all__ = [
+    'WeatherError',
+    'WeatherValidationError',
+    'WeatherTimeoutError',
+    'WeatherHTTPError',
+    'WeatherMalformedResponseError',
+    'WeatherProviderError',
+    'CurrentWeather',
+    'DailyForecastDay',
+    'WeatherReport',
+    'OpenMeteoWeatherAdapter',
+    'GeocodingError',
+    'GeocodingValidationError',
+    'GeocodingTimeoutError',
+    'GeocodingHTTPError',
+    'GeocodingMalformedResponseError',
+    'GeocodingProviderError',
+    'GeocodingCandidate',
+    'GeocodingSearchResult',
+    'GeocodingAdapter',
+    'OpenMeteoGeocodingAdapter',
+    'HistoryError',
+    'HistoryValidationError',
+    'HistoryNotFound',
+    'SearchHistoryStore',
+]

@@ -40,7 +40,7 @@ class ScreenProcessor:
     async def sources(self):
         return await self._request({'operation': 'sources'})
 
-    async def capture(self, target='monitor', source='1', region=None):
+    async def capture(self, target='monitor', source='1', region=None, window_render=False):
         """Return metadata; region is absolute ``x,y,w,h`` within source bounds.
 
         Use target='region' with a monitor source, or supply region to crop a
@@ -53,6 +53,8 @@ class ScreenProcessor:
         try:
             if target not in ('monitor', 'window', 'region'):
                 raise ValueError('target must be monitor, window, or region')
+            if type(window_render) is not bool or (window_render and (target != 'window' or region is not None)):
+                raise ValueError('Window rendering requires one complete window')
             if not isinstance(source, str) or not source:
                 raise ValueError('source must be a nonempty string')
             if region is not None:
@@ -67,8 +69,10 @@ class ScreenProcessor:
                 raise ValueError('region target requires x,y,w,h')
         except ValueError as exc:
             return {'ok': False, 'error': 'invalid_request', 'message': str(exc)}
-        return await self._request({'operation': 'capture', 'target': target,
-                                    'source': source, 'region': values})
+        request = {'operation': 'capture', 'target': target, 'source': source, 'region': values}
+        if window_render:
+            request['window_render'] = True
+        return await self._request(request)
 
     async def _request(self, request):
         if self._task is not None:

@@ -1,4 +1,5 @@
 """Owned, bounded subprocess execution for Windows development commands."""
+from .control_authority import blocked_effect
 import asyncio
 import os
 import secrets
@@ -28,6 +29,7 @@ class ShellExecutionService:
             raise ValueError('The working directory must be an existing folder inside the configured root.')
         return path
 
+    @blocked_effect
     async def execute(self, command, arguments=None, cwd=None, timeout=15, session_id=None):
         arguments = arguments or []
         if not isinstance(arguments, list) or any(not isinstance(item, str) or len(item) > 2048 for item in arguments):
@@ -71,6 +73,7 @@ class ShellExecutionService:
         self._record(command, workdir, result, started)
         return result
 
+    @blocked_effect
     async def cancel(self, execution_id):
         process = self.processes.get(str(execution_id))
         if not process or process.returncode is not None: return False

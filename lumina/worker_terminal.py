@@ -1,4 +1,5 @@
 """Owned Windows ConPTY adapter with bounded polling and explicit cleanup."""
+from .control_authority import blocked_effect
 import asyncio
 import socket
 import time
@@ -28,6 +29,7 @@ class WindowsTerminal:
         pty.fileobj.settimeout(.2)
         self.stdout=PtyStream(self);self.stderr=EmptyStream()
     @classmethod
+    @blocked_effect
     async def spawn(cls,argv,cwd,env):
         from winpty import PtyProcess
         pty=await asyncio.to_thread(PtyProcess.spawn,argv,cwd=cwd,env=env,dimensions=(40,32767),backend=0)

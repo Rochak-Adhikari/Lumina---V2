@@ -106,7 +106,7 @@ sealed class MainWindow:DarkForm {
   }));
  }
  void ShowFailure(string message){if(IsDisposed)return;failed=true;timer.Stop();view.Visible=false;surface.Text=message;surface.Visible=true;surface.BringToFront();if(verification!=null){File.WriteAllText(verification,JsonSerializer.Serialize(new{ok=false,error=message,webview=runtimeVersion}));Close();}}
- void External(string url){if(Uri.TryCreate(url,UriKind.Absolute,out var u)&&u.Scheme is "https" or "http"&&DarkDialog.Show("Open this external address in your browser?\n"+url,"LUMINA",MessageBoxButtons.YesNo)==DialogResult.Yes)Process.Start(new ProcessStartInfo(url){UseShellExecute=true});}
+ void External(string url){if(Uri.TryCreate(url,UriKind.Absolute,out var u)&&u.Scheme is "https" or "http"&&DarkDialog.Show("Open this external address in your browser?\n"+url,"LUMINA",MessageBoxButtons.YesNo)==DialogResult.Yes)DarkDialog.Show("External launches are disabled during fake-only safety validation.","LUMINA");}
 }
 
 // Use documented per-window DWM attributes; never alter Windows theme or security settings.

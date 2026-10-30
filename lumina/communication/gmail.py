@@ -3,6 +3,7 @@
 prepare() performs all reply lookups before confirmation; send() never looks up
 or retries a message. Attachments are returned as metadata, never downloaded.
 """
+from ..control_authority import blocked_effect
 import asyncio
 import base64
 import math
@@ -219,6 +220,7 @@ class Gmail:
                 "subject": subject, "message_id": message_id,
                 "thread_id": thread_id, "headers": headers}
 
+    @blocked_effect
     async def send(self, destination, content, subject="", message_id="", thread_id="", headers=None):
         destination = _recipient(destination)
         subject = _header(subject)

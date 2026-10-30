@@ -1,3 +1,4 @@
+from ..control_authority import blocked_effect
 import hashlib
 import hmac
 import json
@@ -39,6 +40,7 @@ class WhatsApp:
         if not re.fullmatch(r'\+?\d{7,15}',destination):raise CommunicationError('destination_required','Configure or supply the WhatsApp recipient number.')
         if not 1<=len(content)<=4096:raise CommunicationError('invalid_content','WhatsApp text must contain 1–4096 characters.')
         return {'destination':destination,'content':content,'message_id':message_id}
+    @blocked_effect
     async def send(self,destination,content,message_id=''):
         payload={'messaging_product':'whatsapp','to':destination,'type':'text','text':{'body':content}}
         if message_id:payload['context']={'message_id':message_id}

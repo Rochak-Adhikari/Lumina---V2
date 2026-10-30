@@ -76,6 +76,9 @@ class CommunicationManager:
             'incoming':'signed_webhook_required' if name=='whatsapp' else 'provider_api',
             'search_scope':'recent_channel_messages' if name=='discord' else 'retained_inbox' if name in ('telegram','whatsapp') else 'mailbox'} for name,state in self.status.items()]}
     async def call(self,name,operation,**arguments):
+        if operation in {'send', 'reply'}:
+            from ..control_authority import denied
+            return denied()
         adapter=self.adapters.get(name)
         if adapter is None:return {'ok':False,'error':'This communication provider is not configured.','provider':name}
         try:

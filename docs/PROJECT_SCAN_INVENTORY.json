@@ -1,0 +1,183 @@
+{
+  "scanDate": "2026-10-18",
+  "timezone": "Asia/Katmandu",
+  "root": "D:\\R O C H A K\\LUNA 3",
+  "gitRecognized": false,
+  "environmentProbe": "Existing .venv/Scripts/python.exe fails: failed to locate pyvenv.cfg",
+  "counts": [
+    {
+      "directory": "lumina",
+      "files": 31
+    },
+    {
+      "directory": "web",
+      "files": 16
+    },
+    {
+      "directory": "tests",
+      "files": 25
+    },
+    {
+      "directory": "scripts",
+      "files": 5
+    },
+    {
+      "directory": "docs",
+      "files": 12
+    },
+    {
+      "directory": "sources",
+      "files": 86
+    },
+    {
+      "directory": "desktop",
+      "files": 0
+    },
+    {
+      "directory": "camera-helper",
+      "files": 2
+    }
+  ],
+  "requiredPathCoverage": [
+    {
+      "path": "lumina/__main__.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\lumina\\__main__.py"
+      ]
+    },
+    {
+      "path": "lumina/config.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Phase2\\app\\lumina\\config.py",
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\config.py"
+      ]
+    },
+    {
+      "path": "lumina/server.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/memory.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-AudioGraph\\app\\lumina\\memory.py",
+        "dist\\LUMINA-Portable-Phase2\\app\\lumina\\memory.py",
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\memory.py",
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\lumina\\memory.py"
+      ]
+    },
+    {
+      "path": "lumina/speech.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/providers/base.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\providers\\base.py"
+      ]
+    },
+    {
+      "path": "lumina/providers/budget.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Phase2\\app\\lumina\\providers\\budget.py",
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\providers\\budget.py"
+      ]
+    },
+    {
+      "path": "lumina/continuity/__init__.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/continuity/models.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/continuity/admission.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/continuity/service.py",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "lumina/continuity/repository.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\continuity\\repository.py",
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\lumina\\continuity\\repository.py"
+      ]
+    },
+    {
+      "path": "lumina/continuity/retrieval.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\continuity\\retrieval.py"
+      ]
+    },
+    {
+      "path": "lumina/continuity/state.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-20261010\\app\\lumina\\continuity\\state.py",
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\lumina\\continuity\\state.py"
+      ]
+    },
+    {
+      "path": "lumina/continuity/bootstrap.py",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\lumina\\continuity\\bootstrap.py"
+      ]
+    },
+    {
+      "path": "web/app.js",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Phase2\\app\\web\\app.js",
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\web\\app.js"
+      ]
+    },
+    {
+      "path": "web/graph.js",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Phase2\\app\\web\\graph.js",
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\web\\graph.js"
+      ]
+    },
+    {
+      "path": "web/continuity.js",
+      "present": false,
+      "packageCopies": [
+        "dist\\LUMINA-Portable-Roadmap-Final-20261010\\app\\web\\continuity.js"
+      ]
+    },
+    {
+      "path": ".venv/pyvenv.cfg",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "desktop/LUMINA.csproj",
+      "present": false,
+      "packageCopies": []
+    },
+    {
+      "path": "scripts/build_desktop.ps1",
+      "present": false,
+      "packageCopies": []
+    }
+  ],
+  "latestRecordedRelease": "artifacts/roadmap-final-audit.json",
+  "privateData": "Credential contents and SQLite contents not read; no production app started"
+}

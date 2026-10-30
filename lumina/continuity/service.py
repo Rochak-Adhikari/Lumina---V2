@@ -20,9 +20,9 @@ TABLES = {'fact': 'facts', 'decision': 'decisions', 'goal': 'goals',
           'prediction': 'predictions', 'behavior_pattern': 'behavior_patterns',
           'relationship': 'relationships', 'entity': 'entities', 'event': 'events'}
 MUTABLE_KINDS = {'fact', 'decision', 'goal', 'commitment', 'open_loop'}
-PROPOSAL_KEYS = {'kind', 'type', 'subject', 'predicate', 'object', 'source_event_id',
+PROPOSAL_KEYS = {'kind', 'type', 'subject', 'predicate', 'object', 'description', 'object_value', 'content', 'text', 'fact', 'value', 'details', 'source_event_id',
                  'confidence', 'stability', 'importance', 'reason', 'project_id',
-                 'privacy_class', 'data', 'supersedes', 'model_metadata', 'object_entity_id'}
+                 'privacy_class', 'data', 'supersedes', 'model_metadata', 'object_entity_id', 'resurrect'}
 STATE_STATUSES = {'active', 'open', 'blocked', 'pending', 'needs_review', 'disputed'}
 
 
@@ -41,7 +41,13 @@ class MemoryService:
             if not stored:
                 self.db.execute('INSERT INTO meta(key,value) VALUES(?,?)', ('device_id', self.device_id))
         self.user_id = self.entity('user', 'User', 'local-user')['id']
+        self.timezone = None
+        self.rt = None
         self._closed = False
+        from .retrieval import RetrievalService
+        self.retrieval = RetrievalService(self)
+        from .session_continuity import SessionContinuityService
+        self.session_continuity = SessionContinuityService(self)
 
     def status(self):
         with self.repo.transaction():
@@ -158,6 +164,100 @@ class MemoryService:
     def admit(self, candidate_id, *, authorized=False):
         return self.admission.admit(candidate_id, authorized=authorized)
 
+    def reject_candidate(self, candidate_id, reason='', *, authorized=False):
+        return self.admission.reject_candidate(candidate_id, reason=reason, authorized=authorized)
+
+    def defer_candidate(self, candidate_id, *, authorized=False):
+        return self.admission.defer_candidate(candidate_id, authorized=authorized)
+
+    def list_candidates(self, status='pending', *, since=None, until=None, limit=50):
+        return self._list_candidates(status=status, since=since, until=until, limit=limit)
+
+    def _canonical_entity_key(self, entity_id_or_key):
+        if not entity_id_or_key:
+            return ''
+        if entity_id_or_key == 'user':
+            entity_id_or_key = self.user_id
+        row = self.repo.get('entities', entity_id_or_key)
+        if row and row.get('canonical_key'):
+            return row['canonical_key']
+        by_key = self.repo.rows('SELECT canonical_key FROM entities WHERE canonical_key=? LIMIT 1', (entity_id_or_key,))
+        if by_key:
+            return by_key[0]['canonical_key']
+        return str(entity_id_or_key)
+
+    def suppression_fingerprint(self, object_value, object_entity_id=None):
+        norm_val = self._normal(str(object_value or ''))
+        obj_key = self._canonical_entity_key(object_entity_id) if object_entity_id else ''
+        payload = f"val:{norm_val}"
+        if obj_key:
+            payload += f"|entity:{obj_key}"
+        return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+    def is_suppressed(self, subject_canonical_key, predicate, object_value, object_entity_id=None):
+        if not predicate:
+            return None
+        predicate = text(predicate, 'predicate', 160).casefold()
+        fp1 = self.suppression_fingerprint(object_value, object_entity_id)
+        fps = [fp1]
+        if object_entity_id:
+            fps.append(self.suppression_fingerprint(object_value, None))
+        placeholders = ','.join('?' for _ in fps)
+        rows = self.repo.rows(
+            f"SELECT * FROM memory_suppressions WHERE subject_canonical_key=? AND predicate=? AND object_fingerprint IN ({placeholders}) AND status='active'",
+            (subject_canonical_key, predicate, *fps)
+        )
+        return rows[0] if rows else None
+
+    def record_suppression(self, subject_id, predicate, object_value, object_entity_id=None,
+                           original_fact_id=None, reason='', mode='invalidated'):
+        subject_key = self._canonical_entity_key(subject_id)
+        predicate = text(predicate, 'predicate', 160).casefold()
+        fp = self.suppression_fingerprint(object_value, object_entity_id)
+        if mode not in {'invalidated', 'forgotten', 'hard_deleted'}:
+            raise ValueError(f"Invalid suppression mode: {mode}")
+        with self.repo.transaction():
+            existing = self.repo.rows(
+                "SELECT * FROM memory_suppressions WHERE subject_canonical_key=? AND predicate=? AND object_fingerprint=? AND status='active'",
+                (subject_key, predicate, fp)
+            )
+            if existing:
+                return existing[0]
+            suppression_id = str(uuid4())
+            now_ts = now()
+            self.repo.insert('memory_suppressions', dict(
+                id=suppression_id,
+                created_at=now_ts,
+                updated_at=now_ts,
+                subject_canonical_key=subject_key,
+                predicate=predicate,
+                object_fingerprint=fp,
+                original_fact_id=original_fact_id,
+                reason=reason,
+                mode=mode,
+                status='active'
+            ))
+            return self.repo.get('memory_suppressions', suppression_id)
+
+    def override_suppression(self, suppression_id, override_event_id):
+        now_ts = now()
+        with self.repo.transaction():
+            self.repo.update('memory_suppressions', suppression_id, dict(
+                status='overridden',
+                overridden_at=now_ts,
+                override_event_id=override_event_id
+            ))
+            return self.repo.get('memory_suppressions', suppression_id)
+
+    def _is_charter_fact(self, r):
+        if not isinstance(r, dict):
+            return False
+        pred = str(r.get('predicate', '')).strip().casefold()
+        return pred in {
+            'created_by', 'creator', 'sole_creator', 'sole_creator_of',
+            'owned_by', 'owner_of', 'identity_charter', 'charter_version', 'charter_digest'
+        }
+
     def _validate_proposal(self, proposal):
         if is_dataclass(proposal):
             proposal = asdict(proposal)
@@ -187,19 +287,84 @@ class MemoryService:
         p['privacy_class'] = privacy
         self._project(p.get('project_id'))
         if p['kind'] == 'fact':
-            p['subject'] = p.get('subject', self.user_id)
-            if p['subject'] == 'user':
+            obj_val = p.get('object')
+            if obj_val is None or not str(obj_val).strip():
+                for alt_key in ('description', 'object_value', 'content', 'text', 'fact', 'value', 'details'):
+                    if p.get(alt_key) and str(p.get(alt_key)).strip():
+                        p['object'] = p.pop(alt_key)
+                        break
+            p.pop('description', None)
+            p.pop('object_value', None)
+            p.pop('content', None)
+            p.pop('text', None)
+            p.pop('fact', None)
+            p.pop('value', None)
+            p.pop('details', None)
+            subj_val = p.get('subject')
+            if not subj_val:
                 p['subject'] = self.user_id
-            if not self.repo.get('entities', p['subject']):
-                raise ValueError('Use a known subject entity ID, not a guessed name.')
-            p['predicate'] = text(p.get('predicate'), 'predicate', 160).casefold()
+            elif isinstance(subj_val, str):
+                s_lower = subj_val.strip().casefold()
+                s_clean = re.sub(r'[^\w\s-]', ' ', s_lower).strip()
+                s_tokens = set(s_clean.split())
+                user_match_aliases = {
+                    'user', 'local-user', 'me', 'myself', 'rochak', 'rochak adhikari', 'scepter',
+                    'rochak adhikari (scepter)', 'scepter (rochak)', 'creator', 'user (rochak)',
+                    'rochak (scepter)', 'rochak adhikari (user)', 'user_id', 'owner'
+                }
+                assistant_match_aliases = {
+                    'lumina', 'lumina-assistant', 'assistant', 'lumina assistant', 'self', 'bot'
+                }
+                if s_lower in user_match_aliases or 'rochak' in s_tokens or 'scepter' in s_tokens or s_lower == self.user_id.casefold():
+                    p['subject'] = self.user_id
+                elif s_lower in assistant_match_aliases or 'lumina' in s_tokens:
+                    matched_lumina = self.repo.rows("SELECT id FROM entities WHERE canonical_key='lumina-assistant' OR lower(name)='lumina'")
+                    if matched_lumina:
+                        p['subject'] = matched_lumina[0]['id']
+                    else:
+                        p['subject'] = self.entity('user', 'Lumina', 'lumina-assistant')['id']
+                elif not self.repo.get('entities', subj_val):
+                    matched = self.repo.rows("SELECT id FROM entities WHERE lower(name)=? OR canonical_key=?", (s_lower, s_lower))
+                    if not matched and s_clean != s_lower:
+                        matched = self.repo.rows("SELECT id FROM entities WHERE lower(name)=? OR canonical_key=?", (s_clean, s_clean))
+                    if matched:
+                        p['subject'] = matched[0]['id']
+                    else:
+                        raise ValueError('Use a known subject entity ID, not a guessed name.')
+            else:
+                if not self.repo.get('entities', p['subject']):
+                    raise ValueError('Use a known subject entity ID, not a guessed name.')
+            if self._is_charter_fact(p):
+                if p.get('supersedes'):
+                    raise ValueError('Identity charter facts are immutable and cannot be superseded.')
+                pred = p.get('predicate', '').strip().casefold()
+                if pred in {'created_by', 'creator', 'sole_creator', 'owned_by'}:
+                    if not any(name in str(p.get('object', '')) for name in ('Rochak', 'Scepter')):
+                        raise ValueError('Identity charter facts cannot be altered away from Rochak Adhikari (Scepter).')
+                elif pred in {'sole_creator_of', 'creator_of', 'owner_of'}:
+                    subj_key = self._canonical_entity_key(p['subject'])
+                    if subj_key != 'local-user':
+                        raise ValueError('Identity charter creator must be Rochak Adhikari (Scepter).')
+            pred_val = p.get('predicate')
+            if not pred_val or not isinstance(pred_val, str) or not pred_val.strip():
+                if p.get('object') and str(p.get('object')).strip():
+                    pred_val = 'note'
+                else:
+                    raise ValueError('predicate must be bounded, non-empty text.')
+            p['predicate'] = text(pred_val, 'predicate', 160).casefold()
             p['object'] = text(p.get('object'), 'object', 12000)
             if p.get('object_entity_id') and not self.repo.get('entities', p['object_entity_id']):
                 raise ValueError('Use a known object entity ID.')
             if p['object'].casefold().strip('.!? ') in {'hello','hi','hey','haha','thanks','ok','okay','yes','no'}:
                 raise ValueError('That is transient conversation, not durable knowledge.')
-            if set(p['data']) - {'cardinality'} or p['data'].get('cardinality', 'single') not in {'single','multiple'}:
+            allowed_fact_keys = {'cardinality', 'rank', 'order', 'category', 'item', 'notes', 'source_span', 'color'}
+            if set(p['data']) - allowed_fact_keys or p['data'].get('cardinality', 'single') not in {'single','multiple'}:
                 raise ValueError('Invalid fact comparison policy.')
+            subj_key = self._canonical_entity_key(p['subject'])
+            suppression = self.is_suppressed(subj_key, p['predicate'], p['object'], p.get('object_entity_id'))
+            if suppression:
+                if event['source_type'] != 'user' or not p.get('resurrect'):
+                    raise ValueError('That claim was previously forgotten or invalidated and is suppressed.')
         else:
             self._domain_values(p)
         return p, event
@@ -224,19 +389,170 @@ class MemoryService:
     def _admit(self, candidate_id, *, authorized=False):
         if authorized is not True:
             return {'ok': False, 'error': 'Admission requires explicit user confirmation.'}
-        with self.repo.transaction():
-            item = self.repo.get('memory_candidates', candidate_id)
-            if not item or item['status'] != 'pending':
-                return {'ok': False, 'error': 'That pending candidate is unavailable.'}
-            p, source = self._validate_proposal(item['proposal_json'])
-            # Approval is new historical evidence, never a rewritten source event.
-            event = self.record_event('memory.confirmed', {'candidate_id': candidate_id, 'source_event_id': source['id']},
-                                      source_type='user', project_id=p.get('project_id'))
-            result = self._apply(candidate_id, p, event, confirmed=True)
-            if result.get('record_id'):
-                self._evidence(p['kind'], result['record_id'], source, min(p['confidence'], .8), False,
-                               'model_proposal' if p.get('model_metadata') else 'proposal', p.get('model_metadata'))
-            return result
+        try:
+            with self.repo.transaction():
+                item = self.repo.get('memory_candidates', candidate_id)
+                if not item or item['status'] not in ('pending', 'deferred'):
+                    return {'ok': False, 'error': 'That pending candidate is unavailable.'}
+                p, source = self._validate_proposal(item['proposal_json'])
+                # Approval is new historical evidence, never a rewritten source event.
+                event = self.record_event('memory.confirmed', {'candidate_id': candidate_id, 'source_event_id': source['id']},
+                                          source_type='user', project_id=p.get('project_id'))
+                result = self._apply(candidate_id, p, event, confirmed=True)
+                if result.get('record_id'):
+                    self._evidence(p['kind'], result['record_id'], source, min(p['confidence'], .8), False,
+                                   'model_proposal' if p.get('model_metadata') else 'proposal', p.get('model_metadata'))
+                    if p.get('kind') in ('fact', 'goal'):
+                        try:
+                            from .user_summary import UserProfileSummary
+                            UserProfileSummary.update_summary(self.repo)
+                        except Exception:
+                            pass
+                return result
+        except (ValueError, TypeError, KeyError) as exc:
+            reason = str(exc) if isinstance(exc, ValueError) else 'Malformed memory proposal.'
+            with self.repo.transaction():
+                self.repo.update('memory_candidates', candidate_id, dict(status='rejected', decision='reject', reason=reason))
+            return {'ok': False, 'decision': 'reject', 'candidate_id': candidate_id, 'error': reason}
+
+    def _reject_candidate(self, candidate_id, reason='', *, authorized=False):
+        if authorized is not True:
+            return {'ok': False, 'error': 'Rejection requires explicit user confirmation.'}
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            return {'ok': False, 'error': 'Invalid candidate ID.'}
+        candidate_id = candidate_id.strip()
+        try:
+            with self.repo.transaction():
+                item = self.repo.get('memory_candidates', candidate_id)
+                if not item:
+                    return {'ok': False, 'error': 'Candidate not found.'}
+                current_status = item.get('status')
+                if current_status == 'admitted':
+                    return {'ok': False, 'error': 'Cannot reject an already admitted candidate.'}
+                if current_status == 'rejected':
+                    return {'ok': True, 'candidate_id': candidate_id, 'status': 'rejected',
+                            'decision': 'reject', 'idempotent': True}
+                if current_status not in ('pending', 'deferred'):
+                    return {'ok': False, 'error': f'Invalid state transition from {current_status} to rejected.'}
+
+                from .models import contains_secret
+                reason_text = str(reason).strip() if reason else 'Rejected by user'
+                if contains_secret(reason_text):
+                    reason_text = 'Rejected by user'
+
+                self.repo.update('memory_candidates', candidate_id, dict(
+                    status='rejected',
+                    decision='reject',
+                    reason=reason_text
+                ))
+                self.record_event('memory.candidate_rejected', {
+                    'candidate_id': candidate_id,
+                    'reason': reason_text,
+                    'source_event_id': item.get('source_event_id')
+                }, source_type='user', project_id=item.get('proposal_json', {}).get('project_id'))
+                return {'ok': True, 'candidate_id': candidate_id, 'status': 'rejected',
+                        'decision': 'reject', 'reason': reason_text}
+        except (ValueError, TypeError, KeyError) as exc:
+            return {'ok': False, 'error': str(exc)}
+
+    def _defer_candidate(self, candidate_id, *, authorized=False):
+        if authorized is not True:
+            return {'ok': False, 'error': 'Deferral requires explicit user confirmation.'}
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            return {'ok': False, 'error': 'Invalid candidate ID.'}
+        candidate_id = candidate_id.strip()
+        try:
+            with self.repo.transaction():
+                item = self.repo.get('memory_candidates', candidate_id)
+                if not item:
+                    return {'ok': False, 'error': 'Candidate not found.'}
+                current_status = item.get('status')
+                if current_status == 'admitted':
+                    return {'ok': False, 'error': 'Cannot defer an already admitted candidate.'}
+                if current_status == 'rejected':
+                    return {'ok': False, 'error': 'Cannot defer an already rejected candidate.'}
+                if current_status == 'deferred':
+                    return {'ok': True, 'candidate_id': candidate_id, 'status': 'deferred',
+                            'decision': item.get('decision') or 'defer', 'idempotent': True}
+                if current_status != 'pending':
+                    return {'ok': False, 'error': f'Invalid state transition from {current_status} to deferred.'}
+
+                self.repo.update('memory_candidates', candidate_id, dict(
+                    status='deferred',
+                    decision='defer',
+                    reason='Deferred for later review'
+                ))
+                self.record_event('memory.candidate_deferred', {
+                    'candidate_id': candidate_id,
+                    'source_event_id': item.get('source_event_id')
+                }, source_type='user', project_id=item.get('proposal_json', {}).get('project_id'))
+                return {'ok': True, 'candidate_id': candidate_id, 'status': 'deferred',
+                        'decision': 'defer'}
+        except (ValueError, TypeError, KeyError) as exc:
+            return {'ok': False, 'error': str(exc)}
+
+    def _list_candidates(self, status='pending', *, since=None, until=None, limit=50):
+        clauses = []
+        params = []
+        if status is not None:
+            if not isinstance(status, str):
+                raise ValueError('Status must be a string or None.')
+            norm_status = status.strip().lower()
+            if norm_status not in {'pending', 'deferred', 'admitted', 'rejected', 'all'}:
+                raise ValueError(f"Unsupported candidate status: {status}")
+            if norm_status != 'all':
+                clauses.append('status = ?')
+                params.append(norm_status)
+
+        from .policy import timestamp as normalize_time
+        if since is not None:
+            clauses.append('created_at >= ?')
+            params.append(normalize_time(since))
+        if until is not None:
+            clauses.append('created_at <= ?')
+            params.append(normalize_time(until))
+
+        limit_val = max(1, min(int(limit), 200))
+        where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        sql = f"SELECT * FROM memory_candidates{where} ORDER BY created_at ASC, id ASC LIMIT ?"
+        params.append(limit_val)
+
+        from .models import contains_secret
+        rows = self.repo.rows(sql, tuple(params))
+        enriched = []
+        for row in rows:
+            c = dict(row)
+            p = c.get('proposal_json')
+            if isinstance(p, dict) and contains_secret(p):
+                c['proposal_json'] = {'error': 'Secret detected in proposal'}
+            src_id = c.get('source_event_id')
+            if src_id:
+                evt = self.repo.get('events', src_id)
+                if evt:
+                    payload = evt.get('payload_json') or {}
+                    safe_payload = {}
+                    if 'text' in payload and isinstance(payload['text'], str) and not contains_secret(payload['text']):
+                        safe_payload['text'] = payload['text'][:1000]
+                    if 'role' in payload:
+                        safe_payload['role'] = payload['role']
+                    c['source_event'] = {
+                        'id': evt['id'],
+                        'event_type': evt['event_type'],
+                        'timestamp': evt['timestamp'],
+                        'source_type': evt['source_type'],
+                        'payload': safe_payload,
+                        'privacy_class': evt.get('privacy_class', 'private')
+                    }
+            rec_id = c.get('record_id')
+            if rec_id:
+                ev_rows = self.repo.rows(
+                    "SELECT id, extraction_method, confidence, observed_at, privacy_class FROM evidence WHERE record_id=? ORDER BY observed_at ASC LIMIT 20",
+                    (rec_id,)
+                )
+                c['evidence'] = ev_rows
+            enriched.append(c)
+
+        return {'ok': True, 'candidates': enriched, 'items': enriched, 'count': len(enriched)}
 
     def _apply(self, candidate_id, p, event, *, confirmed):
         if not confirmed and (p['confidence'] < .55 or p['privacy_class'] == 'sensitive' or p.get('supersedes')):
@@ -244,6 +560,32 @@ class MemoryService:
             return {'ok': False, 'decision': 'reject', 'candidate_id': candidate_id, 'error': 'Explicit confirmation is required for this belief.'}
         kind = p['kind']
         confidence = max(.95, p['confidence']) if confirmed else min(.75, p['confidence'])
+        if kind == 'fact':
+            if self._is_charter_fact(p):
+                if p.get('supersedes'):
+                    raise ValueError('Identity charter facts are immutable and cannot be superseded.')
+                pred = str(p.get('predicate', '')).strip().casefold()
+                if pred in {'created_by', 'creator', 'sole_creator', 'owned_by'}:
+                    if not any(name in str(p.get('object', '')) for name in ('Rochak', 'Scepter')):
+                        raise ValueError('Identity charter facts cannot be altered away from Rochak Adhikari (Scepter).')
+                elif pred in {'sole_creator_of', 'creator_of', 'owner_of'}:
+                    subj_key = self._canonical_entity_key(p['subject'])
+                    if subj_key != 'local-user':
+                        raise ValueError('Identity charter creator must be Rochak Adhikari (Scepter).')
+            subj_key = self._canonical_entity_key(p['subject'])
+            suppression = self.is_suppressed(subj_key, p['predicate'], p['object'], p.get('object_entity_id'))
+            if suppression:
+                if confirmed and event['source_type'] == 'user' and p.get('resurrect'):
+                    self.override_suppression(suppression['id'], event['id'])
+                    self.record_event('memory.resurrected', {
+                        'suppression_id': suppression['id'],
+                        'override_event_id': event['id'],
+                        'subject_key': subj_key,
+                        'predicate': p['predicate']
+                    }, project_id=p.get('project_id'))
+                else:
+                    self.repo.update('memory_candidates', candidate_id, dict(status='rejected', decision='reject', reason='Suppressed memory cannot be resurrected without explicit user confirmation.'))
+                    return {'ok': False, 'decision': 'reject', 'candidate_id': candidate_id, 'error': 'Suppressed memory cannot be resurrected without explicit user confirmation.'}
         if kind != 'fact':
             values = self._domain_values(p)
             values.update(project_id=p.get('project_id'), privacy_class=p['privacy_class'])
@@ -279,6 +621,8 @@ class MemoryService:
                     old = self.repo.get('facts', p['supersedes'])
                     if not confirmed or not old or old['subject_entity_id'] != p['subject'] or old['predicate'] != p['predicate'] or old.get('project_id') != p.get('project_id'):
                         raise ValueError('Supersession requires the exact existing fact and user authority.')
+                    if self._is_charter_fact(old) or self._is_charter_fact(p):
+                        raise ValueError('Identity charter facts are immutable and cannot be superseded.')
                     if old['valid_until'] is not None or event['timestamp'] < old['valid_from']:
                         raise ValueError('The fact changed or the correction predates it; inspect it again.')
                     for previous in current:
@@ -287,8 +631,13 @@ class MemoryService:
                         self.repo.update('facts', previous['id'], dict(valid_until=event['timestamp'], status='superseded'))
                         self._review_assumptions(previous['id'], event)
                     decision = 'supersede'
-                elif current and p['data'].get('cardinality', 'single') != 'multiple':
-                    decision, status = 'contradict', 'disputed'
+                else:
+                    is_multi = (p['data'].get('cardinality') == 'multiple' or
+                                p['data'].get('rank') is not None or
+                                p['predicate'].startswith(('interest', 'hobby', 'favorite_', 'friend', 'dislikes_', 'food_', 'studies_', 'course', 'entertainment_')) or
+                                p['predicate'] in {'note', 'saved_note'})
+                    if current and not is_multi and p['data'].get('cardinality', 'single') != 'multiple':
+                        decision, status = 'contradict', 'disputed'
                 identity = self.repo.insert('facts', dict(subject_entity_id=p['subject'], predicate=p['predicate'],
                     object_value=p['object'], object_entity_id=p.get('object_entity_id'), confidence=confidence, stability=p['stability'], importance=p['importance'],
                     valid_from=event['timestamp'], status=status, source_type=event['source_type'],
@@ -304,6 +653,12 @@ class MemoryService:
         if decision != 'duplicate':
             lifecycle = {'create':'created', 'reinforce':'reinforced', 'contradict':'contradicted', 'supersede':'superseded'}[decision]
             self.record_event('memory.'+lifecycle, {'record_id': identity, 'kind': kind, 'candidate_id': candidate_id}, project_id=p.get('project_id'))
+        if kind in ('fact', 'goal'):
+            try:
+                from .user_summary import UserProfileSummary
+                UserProfileSummary.update_summary(self.repo)
+            except Exception:
+                pass
         return {'ok': True, 'decision': decision, 'candidate_id': candidate_id, 'record_id': identity,
                 'uncertainty': 'Conflicting evidence remains unresolved.' if decision == 'contradict' else None}
 
@@ -390,6 +745,8 @@ class MemoryService:
             old = self.repo.get('facts', fact_id)
             if not old:
                 return {'ok': False, 'error': 'That fact is unavailable.'}
+            if self._is_charter_fact(old):
+                return {'ok': False, 'error': 'Immutable identity charter facts cannot be superseded, corrected, or replaced.'}
             event = self.repo.get('events', source_event_id) if source_event_id else None
             if event and event['source_type'] != 'user':
                 return {'ok': False, 'error': 'A correction requires user evidence.'}
@@ -427,8 +784,34 @@ class MemoryService:
             return {'ok':True, 'id':identity, 'status':status}
 
     def recall(self, query='', **kwargs):
-        from .retrieval import RetrievalService
-        return RetrievalService(self).recall(query, **kwargs)
+        return self.retrieval.recall(query, **kwargs)
+
+    def search_paginated(self, query='', **kwargs):
+        return self.retrieval.search_paginated(query, **kwargs)
+
+    def explain_record(self, record_id, **kwargs):
+        return self.retrieval.explain_record(record_id, **kwargs)
+
+    def finalize_session(self, session_id: str, *, status: str = 'completed'):
+        return self.session_continuity.finalize_session(session_id, status=status)
+
+    def recover_interrupted_sessions(self):
+        return self.session_continuity.recover_interrupted_sessions()
+
+    def get_previous_session(self, current_session_id=None):
+        return self.session_continuity.get_previous_session(current_session_id)
+
+    def list_summaries(self, level=None, topic=None):
+        from .user_summary import HierarchicalSummaryService
+        return HierarchicalSummaryService.list_summaries(self.repo, level=level, topic=topic)
+
+    def get_summary(self, summary_id):
+        from .user_summary import HierarchicalSummaryService
+        return HierarchicalSummaryService.get_summary(self.repo, summary_id)
+
+    def update_summaries(self):
+        from .user_summary import HierarchicalSummaryService
+        return HierarchicalSummaryService.update_all(self.repo, self.user_id)
 
     def explain(self, identity, *, online=False):
         kind, row = self._find(identity)
@@ -529,10 +912,16 @@ class MemoryService:
     def open_loops(self,project_id=None):
         return {'ok':True,'items':self.current_state(project_id)['open_loops']}
 
+    def daily_reflection(self, date=None, **kwargs):
+        from .state import ContinuityProjection
+        return ContinuityProjection(self).daily_reflection(date=date, **kwargs)
+
     def forget_plan(self,identity):
         kind,row=self._find(identity)
         if kind not in MUTABLE_KINDS|{'episode','prediction','behavior_pattern'}:
             return {'ok':False,'error':'Only memory records can be forgotten through this operation.'}
+        if kind == 'fact' and self._is_charter_fact(row):
+            return {'ok':False,'error':'Immutable identity charter facts cannot be forgotten or deleted.'}
         records={identity};events=set();candidates=set()
         # A local interactive review must not scan an unlimited event archive.
         total=sum(self.repo.rows('SELECT count(*) AS n FROM '+table)[0]['n']
@@ -581,17 +970,50 @@ class MemoryService:
         with self.repo.transaction():
             kind,row=self._find(identity)
             if not row:return {'ok':False,'error':'Memory unavailable.'}
+            if kind == 'fact' and self._is_charter_fact(row):
+                return {'ok':False, 'error':'Immutable identity charter facts cannot be invalidated, forgotten, or deleted.'}
             if mode!='hard_delete':
                 if kind!='fact':return self.resolve(identity,'cancelled',authorized=True)
                 event=self.record_event('memory.'+('expired' if mode=='expire' else 'invalidated'),{'record_id':identity},source_type='user',project_id=row.get('project_id'))
                 self.repo.update('facts',identity,dict(valid_until=event['timestamp'],status='expired' if mode=='expire' else 'invalidated'))
                 self._review_assumptions(identity,event)
+                self.record_suppression(
+                    subject_id=row['subject_entity_id'],
+                    predicate=row['predicate'],
+                    object_value=row['object_value'],
+                    object_entity_id=row.get('object_entity_id'),
+                    original_fact_id=row['id'],
+                    reason=f'Memory {mode}',
+                    mode='invalidated' if mode=='invalidate' else 'forgotten'
+                )
+                if kind in ('fact', 'goal'):
+                    try:
+                        from .user_summary import UserProfileSummary
+                        UserProfileSummary.update_summary(self.repo)
+                    except Exception:
+                        pass
                 return {'ok':True,'id':identity,'mode':mode}
             plan=self.forget_plan(identity)
             if not plan.get('ok'):return plan
             if scope_id and plan['scope_id']!=scope_id:
                 return {'ok':False,'error':'The deletion scope changed; confirm the new scope.'}
             records=set(plan['records']);events=set(plan['events'])
+            for i in records:
+                k,r=self._find(i)
+                if k == 'fact' and self._is_charter_fact(r):
+                    return {'ok':False, 'error':'Deletion scope contains immutable identity charter facts.'}
+            for i in records:
+                k,r=self._find(i)
+                if k == 'fact':
+                    self.record_suppression(
+                        subject_id=r['subject_entity_id'],
+                        predicate=r['predicate'],
+                        object_value=r['object_value'],
+                        object_entity_id=r.get('object_entity_id'),
+                        original_fact_id=r['id'],
+                        reason='Memory hard deletion',
+                        mode='hard_deleted'
+                    )
             # Remove dependent links before source events (foreign keys remain on).
             for i in records:
                 self.db.execute('DELETE FROM evidence WHERE record_id=?',(i,))
@@ -612,6 +1034,11 @@ class MemoryService:
             for i in events:self.db.execute('DELETE FROM events WHERE id=?',(i,))
             self.db.execute('DELETE FROM current_state')
             self.record_event('memory.deleted',{'records_removed':len(records),'source_events_removed':len(events)},source_type='user')
+            try:
+                from .user_summary import UserProfileSummary
+                UserProfileSummary.update_summary(self.repo)
+            except Exception:
+                pass
             return {'ok':True,'mode':mode,'removed':len(records),'notice':plan['notice']}
 
     def explain_decision(self, identity, **kwargs):

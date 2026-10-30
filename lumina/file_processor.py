@@ -4,6 +4,7 @@ Parser processes receive bounded byte snapshots, not filesystem authority. Cance
 propagates CancelledError after killing/reaping the parser. No conversion or online
 provider is selected implicitly. ZIP extraction requires a new destination directory.
 """
+from .control_authority import blocked_effect
 import asyncio
 import base64
 import importlib.util
@@ -59,6 +60,7 @@ class FileProcessor:
                                  for m in ('pypdf', 'docx', 'pptx', 'openpyxl', 'PIL')},
                 'online_analysis': 'unconfigured', 'transformations': 'local'}
 
+    @blocked_effect
     async def save_upload(self, directory, filename, data):
         """Store one user-selected file atomically inside the active path policy."""
         if self._closed:
@@ -183,6 +185,9 @@ class FileProcessor:
             self._tasks.discard(task)
 
     async def _process(self, path, action, destination, options=None):
+        if action in ('export_text', 'extract_archive', *self.TRANSFORMS):
+            from .control_authority import denied
+            return denied()
         src = self._path(path)
         if not src.is_file():
             raise ValueError('Expected regular file')
@@ -243,6 +248,7 @@ class FileProcessor:
             result['output_path'] = str(dst)
         return result
 
+    @blocked_effect
     async def _export(self, dst, text):
         self._path(dst, False)
         fd, temporary = tempfile.mkstemp(prefix='lumina-export-', dir=self._path(dst.parent))
@@ -260,6 +266,7 @@ class FileProcessor:
         finally:
             temp.unlink(missing_ok=True)
 
+    @blocked_effect
     async def _extract(self, dst, members):
         self._path(dst, False).mkdir()
         try:

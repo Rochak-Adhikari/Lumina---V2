@@ -3,6 +3,7 @@
 ``root`` is the configured storage base; files live only in ``root / 'Uploads'``.
 The caller must grant that base through the supplied resolver's existing policy.
 """
+from .control_authority import blocked_effect
 from datetime import datetime, timezone
 import hashlib
 import os
@@ -47,6 +48,7 @@ class UploadWorkspace:
                 'name': path.name, 'path': str(path), 'bytes': info.st_size,
                 'modified': datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat()}
 
+    @blocked_effect
     async def save(self, filename, data):
         if not self._valid_name(filename):
             return {'ok': False, 'status': 'invalid', 'error': 'The selected filename is invalid.'}

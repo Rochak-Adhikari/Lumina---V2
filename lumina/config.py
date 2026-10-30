@@ -7,6 +7,7 @@ import tomllib
 @dataclass(frozen=True)
 class Config:
     root: Path = Path.cwd()
+    state_root: Path | None = None
     provider: str = "local"
     host: str = "127.0.0.1"
     port: int = 8764
@@ -24,12 +25,20 @@ class Config:
     desktop_roots: tuple = ()
     knowledge_graph: str = "graphify-out/graph.json"
     memory_path: str = ""
+    greeting_path: str = ""
     voice: str = "Aoede"
+    greetings_enabled: bool = True
+    auto_memory_capture: bool = True
     microphone_device: str = "default"
     speaker_device: str = "default"
     graph_limit: int = 600
     scan_limit: int = 20000
     scan_seconds: int = 5
+
+    @property
+    def runtime_root(self):
+        """Existing durable state may outlive a relocation of application files."""
+        return Path(self.state_root) if self.state_root is not None else self.root
 
     @classmethod
     def load(cls, path: Path = Path("lumina.toml")):
@@ -40,6 +49,18 @@ class Config:
         for key in known:
             if "LUMINA_" + key.upper() in os.environ:
                 data[key] = os.environ["LUMINA_" + key.upper()]
+        if 'greetings_enabled' in data:
+            value=data['greetings_enabled']
+            if isinstance(value,str) and value.lower() in {'true','false'}:
+                data['greetings_enabled']=value.lower()=='true'
+            elif not isinstance(value,bool):
+                raise ValueError('greetings_enabled must be true or false.')
+        if 'auto_memory_capture' in data:
+            value=data['auto_memory_capture']
+            if isinstance(value,str) and value.lower() in {'true','false'}:
+                data['auto_memory_capture']=value.lower()=='true'
+            elif not isinstance(value,bool):
+                raise ValueError('auto_memory_capture must be true or false.')
         if 'allow_metered_agents' in data:
             value=data['allow_metered_agents']
             if isinstance(value,str) and value.lower() in {'true','false'}:
@@ -50,6 +71,12 @@ class Config:
             if key in data:
                 data[key] = int(data[key])
         data["root"] = Path(data.get("root", Path.cwd())).expanduser().resolve(strict=True)
+        if data.get('state_root'):
+            data['state_root'] = Path(data['state_root']).expanduser().resolve(strict=True)
+            if not data['state_root'].is_dir():
+                raise ValueError('LUMINA_STATE_ROOT must be an existing directory.')
+        else:
+            data['state_root'] = None
         roots=data.get('desktop_roots',())
         if isinstance(roots,str): roots=[p for p in roots.split(os.pathsep) if p]
         if not isinstance(roots,(list,tuple)) or any(not isinstance(p,str) for p in roots):

@@ -5,7 +5,8 @@ ROOT=Path(__file__).resolve().parent.parent
 relocated=Path(tempfile.mkdtemp(prefix='LUMINA-relocated-'))/'LUMINA'
 shutil.copytree(Path(sys.argv[1]) if len(sys.argv)>1 else ROOT/'dist/LUMINA-Portable',relocated)
 with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
-env=dict(os.environ,LUMINA_PORT=str(port),LUMINA_PROVIDER='local',LUMINA_WORKER='none')
+env=dict(os.environ,LUMINA_PORT=str(port),LUMINA_PROVIDER='local',LUMINA_WORKER='none',
+         LUMINA_MEMORY_PATH=str(relocated/'verification-memory.sqlite3'))
 exe=relocated/'LUMINA.exe'
 report={'relocated':str(relocated),'port':port}
 def health():
@@ -34,7 +35,15 @@ with socket.socket() as foreign:
  foreign.bind(('127.0.0.1',port));foreign.listen()
  result=run('--verify-backend','foreign')
  assert not result['ok'] and 'occupied' in result['error']
-assert run('--verify-window','window')['ok']
+window=run('--verify-window','window')
+assert window['ok'] and window['visible']
+content=window['content']
+while isinstance(content,str):content=json.loads(content)
+assert content['health']=='connected', content
+assert content['graphCanvas'], content
+report['window_checks']={'runtime_connected':True,'graph_canvas_present':True}
 assert health() is None
-(ROOT/'artifacts/desktop-package-verification.json').write_text(json.dumps(report,indent=2))
+report_path=Path(sys.argv[2]) if len(sys.argv)>2 else ROOT/'artifacts/desktop-package-verification.json'
+report_path.parent.mkdir(parents=True,exist_ok=True)
+report_path.write_text(json.dumps(report,indent=2),encoding='utf-8')
 print(json.dumps(report,indent=2))

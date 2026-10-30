@@ -1,4 +1,5 @@
 """Structured desktop operations. Desktop roots never grant worker access."""
+from .control_authority import blocked_effect
 from dataclasses import dataclass, field
 from pathlib import Path
 from difflib import SequenceMatcher
@@ -29,6 +30,8 @@ class WorkspaceManager:
     last_opened_path: Path = None
     last_selected_file: Path = None
     active_worker_workspace: Path = None
+    _locations_cache: dict = field(default_factory=dict,init=False,repr=False)
+    _locations_at: float = field(default=0,init=False,repr=False)
 
     def __post_init__(self):
         self.active_workspace = Path(self.active_workspace).resolve()
@@ -36,8 +39,18 @@ class WorkspaceManager:
         self.roots = list(dict.fromkeys([self.active_workspace, *(Path(p).resolve() for p in self.roots)]))
 
     def locations(self):
+        if self._locations_cache and time.monotonic()-self._locations_at<30:
+            return dict(self._locations_cache)
         home = Path.home()
-        return {name.lower(): home / name for name in ('Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music')} | {'home': home, 'appdata': Path(os.environ.get('APPDATA', home))}
+        from .known_folders import WindowsKnownFolders
+        known=WindowsKnownFolders(home=home)
+        locations={'home':home,'appdata':Path(os.environ.get('APPDATA',home))}
+        for name in ('desktop','documents','downloads','pictures','videos','music'):
+            try:locations[name]=Path(known.resolve(name)['path'])
+            except OSError:pass  # No guessed non-redirected path on Windows.
+        self._locations_cache=locations
+        self._locations_at=time.monotonic()
+        return dict(locations)
 
 
 class PathResolver:
@@ -188,6 +201,7 @@ class FilesystemManager:
             if len(entries) == 101: break
         return {'ok': True, 'entries': entries[:100], 'truncated': len(entries)>100}
 
+    @blocked_effect
     def create_directory(self, path):
         p = self.resolver.path(path, False)
         if p.exists(): raise DesktopError('DIRECTORY_ALREADY_EXISTS', 'That location already exists.')
@@ -195,6 +209,7 @@ class FilesystemManager:
         self.search.invalidate()
         return {'ok': True, 'path': str(p), 'message': f'Created {p.name}, sir.'}
 
+    @blocked_effect
     def transfer(self, source, destination, move=False):
         src, dst = self.resolver.path(source), self.resolver.path(destination, False)
         if src in self.resolver.workspace.roots or dst.is_relative_to(src):
@@ -222,6 +237,7 @@ class FilesystemManager:
     def move_path(self, source, destination): return self.transfer(source, destination, True)
     def rename_path(self, source, destination): return self.transfer(source, destination, True)
 
+    @blocked_effect
     def delete_path(self, path):
         p = self.resolver.path(path)
         if p in self.resolver.workspace.roots: raise DesktopError('PERMISSION_DENIED', 'A configured root cannot be deleted.')
@@ -245,6 +261,7 @@ class ProcessManager:
         return process.pid
     def list_processes(self):
         return {'ok': True, 'processes': [{'id': pid, 'kind': kind, 'target': target, 'running': p.poll() is None} for pid,(p,kind,target) in self.owned.items()]}
+    @blocked_effect
     def terminate_process(self, process_id):
         entry = self.owned.get(str(process_id))
         if not entry: raise DesktopError('PERMISSION_DENIED', 'Only a LUMINA-owned process can be stopped.')
@@ -288,8 +305,11 @@ class ApplicationManager:
                                         if path.is_file(): self._add(path.stem, path, 'App Paths')
                                 except OSError: pass
                     except OSError: pass
-            for env in ('APPDATA','PROGRAMDATA'):
-                start = Path(os.environ.get(env, ''))/'Microsoft/Windows/Start Menu/Programs'
+            from .known_folders import WindowsKnownFolders
+            known = WindowsKnownFolders()
+            for name in ('programs','common_programs'):
+                try: start = Path(known.resolve(name)['path'])
+                except OSError: continue
                 if start.is_dir():
                     for p in start.rglob('*.lnk'): self._add(p.stem, p, 'Start Menu')
             self._discover_start_apps()
@@ -332,6 +352,7 @@ class ApplicationManager:
         if not hits: return {'ok':False,'code':'APPLICATION_NOT_FOUND','error':'No matching application was discovered.'}
         return {'ok':len(hits)==1,'code':'RESOLVED' if len(hits)==1 else 'AMBIGUOUS_APPLICATION','error': None if len(hits)==1 else 'Several applications match; choose one.', 'applications':hits[:20]}
 
+    @blocked_effect
     def launch_application(self, application_id, path=None):
         self.discover_applications()
         app=self.applications.get(application_id)
@@ -361,11 +382,13 @@ class ApplicationManager:
 
 class ExplorerManager:
     def __init__(self, resolver): self.resolver=resolver
+    @blocked_effect
     def open_folder(self,path):
         p=self.resolver.path(path)
         if not p.is_dir(): raise DesktopError('INVALID_OPERATION','Choose a folder.')
         os.startfile(str(p));self.resolver.workspace.last_opened_path=p
         return {'ok':True,'message':f'Opened {p.name}, sir.'}
+    @blocked_effect
     def reveal_in_explorer(self,path):
         p=self.resolver.path(path)
         subprocess.Popen(['explorer.exe', '/select,',str(p)],shell=False)
@@ -375,6 +398,7 @@ class ExplorerManager:
 
 class TerminalManager:
     def __init__(self,resolver,processes): self.resolver,self.processes=resolver,processes
+    @blocked_effect
     def open_terminal(self,path):
         p=self.resolver.path(path)
         if not p.is_dir(): raise DesktopError('INVALID_OPERATION','Choose a folder.')

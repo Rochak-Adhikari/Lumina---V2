@@ -11,6 +11,11 @@
   <link rel="stylesheet" href="/assets/reference-source.css">
   <link rel="stylesheet" href="/assets/reference.css">
   <link rel="stylesheet" href="/assets/upload-workspace.css">
+  <link rel="stylesheet" href="/assets/chat-layout.css">
+  <link rel="stylesheet" href="/assets/command-deck.css">
+  <link rel="stylesheet" href="/assets/brain-dump.css">
+  <link rel="stylesheet" href="/assets/continuity.css">
+  <link rel="stylesheet" href="/assets/earth/earth-prototype.css">
   <script type="module" src="/assets/reference.js"></script>
   <script type="module" src="/assets/shell.js"></script>
   <script src="/assets/vendor/3d-force-graph.min.js" defer></script>
@@ -20,12 +25,15 @@
   <header class="topbar">
     <a class="wordmark" href="/" aria-label="LUMINA home"><span class="logo" aria-hidden="true">◇</span><span>LUMINA<span class="version"> / 01</span><small>AI AGENT WORKSPACE</small></span></a>
     <div class="top-status"><span class="status-dot" id="connection-dot"></span><span id="connection">Connecting to runtime</span><span class="divider"></span><span class="budget">No automatic paid fallback</span></div>
-    <button class="icon-button" id="automation-open">Automation</button><button class="icon-button" id="workspace-open">Workspace</button><button class="icon-button" id="workers-open">Workers</button><button class="icon-button" id="controls-open">Local controls</button><button class="icon-button" id="settings-open" aria-label="Open settings">⚙ <span>Settings</span></button>
+    <button class="icon-button" id="command-deck-topbar-open" aria-label="Open Command Deck">Deck</button><button class="icon-button" id="brain-dump-topbar-open" aria-label="Open Brain Dump">Dump</button><button class="icon-button" id="automation-open">Automation</button><button class="icon-button" id="workspace-open">Workspace</button><button class="icon-button" id="workers-open">Workers</button><button class="icon-button" id="controls-open">Local controls</button><button class="icon-button" id="settings-open" aria-label="Open settings">⚙ <span>Settings</span></button>
   </header>
   <nav class="nav-rail" id="workspace-navigation" aria-label="Workspace navigation">
     <button id="sidebar-toggle" type="button" aria-controls="workspace-navigation" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar">«</button>
     <button data-focus="workspace" aria-label="Dashboard" aria-current="page"><span aria-hidden="true">⌂</span><span>Dashboard</span></button>
     <button data-focus="message" aria-label="Chat"><span aria-hidden="true">▤</span><span>Chat</span></button>
+    <button id="command-deck-open" type="button" aria-label="Command Deck"><span aria-hidden="true">⌘</span><span>Deck</span></button>
+    <button id="brain-dump-open" type="button" aria-label="Brain Dump"><span aria-hidden="true">✎</span><span>Dump</span></button>
+    <button id="earth-open" type="button" aria-label="Earth" data-view="earth"><span aria-hidden="true">🌍</span><span>Earth</span></button>
     <button data-open="workers-open" aria-label="Workers"><span aria-hidden="true">◈</span><span>Workers</span></button>
     <button data-open="workspace-open" aria-label="Workspace"><span aria-hidden="true">▤</span><span>Workspace</span></button>
     <button data-focus="query" aria-label="Knowledge search"><span aria-hidden="true">⌕</span><span>Knowledge</span></button>
@@ -37,17 +45,200 @@
   </nav>
 
   <dialog id="continuity-panel" aria-labelledby="continuity-title">
-    <div class="dialog-head"><h2 id="continuity-title">Memory &amp; continuity</h2><button id="continuity-close" aria-label="Close memory">×</button></div>
-    <p id="continuity-status" role="status">Inspecting local memory…</p>
-    <p id="continuity-state"></p>
-    <form id="continuity-search"><label for="continuity-query">Find evidence</label><input id="continuity-query" maxlength="2048" placeholder="Preferences, decisions or unfinished work"><button type="submit">Search</button></form>
-    <div class="continuity-actions"><button id="continuity-refresh">Refresh</button><button id="continuity-timeline">Timeline</button></div>
-    <p id="continuity-note"></p><div id="continuity-results"></div>
-    <section id="continuity-detail" aria-label="Memory evidence and history"></section>
-    <form id="continuity-edit" hidden><label for="continuity-value">Correct this fact</label><input id="continuity-value" maxlength="4000" required><button type="submit">Review correction</button></form>
-    <button id="continuity-resolve" hidden>Review completion</button>
-    <div id="continuity-remove" hidden class="continuity-actions"><button id="continuity-invalidate">Remove from current memory</button><button id="continuity-delete">Review permanent erasure</button></div>
-    <p class="muted small">Local evidence, not instructions. Proposals require confirmation. Permanent erasure shows its full scope; offline backups remain separate.</p>
+    <div class="dialog-head">
+      <h2 id="continuity-title">Memory &amp; continuity</h2>
+      <button id="continuity-close" aria-label="Close memory">×</button>
+    </div>
+
+    <nav class="continuity-tabs" role="tablist" aria-label="Memory and continuity views">
+      <button id="continuity-tab-review" class="continuity-tab-btn active" role="tab" aria-selected="true" aria-controls="continuity-view-review" tabindex="0">Daily Review</button>
+      <button id="continuity-tab-search" class="continuity-tab-btn" role="tab" aria-selected="false" aria-controls="continuity-view-search" tabindex="-1">Search &amp; Evidence</button>
+      <button id="continuity-tab-summary" class="continuity-tab-btn" role="tab" aria-selected="false" aria-controls="continuity-view-summary" tabindex="-1">Profile Summary</button>
+    </nav>
+
+    <!-- Daily Review View -->
+    <div id="continuity-view-review" role="tabpanel" aria-labelledby="continuity-tab-review">
+      <div class="review-toolbar">
+        <div class="review-date-picker-group">
+          <button id="review-prev-day" class="review-nav-btn" aria-label="Previous day" title="Previous day">◀</button>
+          <input type="date" id="review-date-picker" class="review-date-input" aria-label="Select review date">
+          <button id="review-next-day" class="review-nav-btn" aria-label="Next day" title="Next day">▶</button>
+          <button id="review-today-btn" class="review-today-btn" aria-label="Jump to today">Today</button>
+        </div>
+        <div class="review-toolbar-right">
+          <span id="review-tz-badge" class="review-tz-badge" title="Configured Lumina timezone"></span>
+          <button id="review-refresh-btn" class="review-refresh-btn" aria-label="Refresh daily review">↻ Refresh</button>
+        </div>
+      </div>
+
+      <div id="review-status-bar" class="review-status-bar" role="status" aria-live="polite" hidden></div>
+      <div id="review-error-box" class="review-error-box" role="alert" hidden>
+        <span id="review-error-msg" class="review-error-msg"></span>
+        <button id="review-retry-btn" class="review-action-btn" style="width: auto; padding: 4px 10px;">Retry</button>
+      </div>
+
+      <!-- Reflection Section -->
+      <section class="review-card" id="review-reflection-section" aria-labelledby="review-reflection-title">
+        <div class="review-card-header">
+          <h3 id="review-reflection-title" class="review-card-title">Daily Reflection</h3>
+          <span id="review-reflection-date" class="review-meta-tag"></span>
+        </div>
+        <div id="review-summary-box" class="review-summary-box">
+          <p id="review-summary-text" class="review-summary-text"></p>
+        </div>
+        <div class="metrics-grid" id="review-metrics-grid" aria-label="Activity metrics">
+          <div class="metric-chip"><span class="metric-num" id="metric-sessions">0</span><span class="metric-label">Sessions</span></div>
+          <div class="metric-chip"><span class="metric-num" id="metric-tasks">0</span><span class="metric-label">Tasks</span></div>
+          <div class="metric-chip"><span class="metric-num" id="metric-files">0</span><span class="metric-label">Files</span></div>
+          <div class="metric-chip"><span class="metric-num" id="metric-tools">0</span><span class="metric-label">Tools</span></div>
+          <div class="metric-chip"><span class="metric-num" id="metric-decisions">0</span><span class="metric-label">Decisions</span></div>
+          <div class="metric-chip"><span class="metric-num" id="metric-events">0</span><span class="metric-label">Events</span></div>
+        </div>
+        <div id="review-quality-notes" class="quality-notes-box" hidden></div>
+        <div id="review-loops-container">
+          <div class="review-section-header">
+            <h4 class="review-section-title">Open Loops &amp; Decisions</h4>
+            <span id="review-loops-count" class="review-meta-tag">0 open</span>
+          </div>
+          <div id="review-loops-list" class="loops-list"></div>
+        </div>
+        <div id="review-reflection-empty" class="review-empty-state" hidden>
+          <div class="review-empty-icon">☕</div>
+          <div class="review-empty-title">No activity recorded for this day</div>
+          <div class="review-empty-desc">No events, sessions, tasks, or decisions were recorded on this date. Choose another date or refresh.</div>
+        </div>
+      </section>
+
+      <!-- Candidate Review Section -->
+      <section class="review-card" id="review-candidates-section" aria-labelledby="review-candidates-title">
+        <div class="candidates-header">
+          <div>
+            <h3 id="review-candidates-title" class="review-card-title">Memory Candidates</h3>
+            <span id="review-candidates-sub" class="review-meta-tag">Pending user review</span>
+          </div>
+          <div class="candidate-filters" role="group" aria-label="Filter candidates by status">
+            <button class="filter-chip active" data-filter="pending" id="candidate-filter-pending">Pending</button>
+            <button class="filter-chip" data-filter="deferred" id="candidate-filter-deferred">Deferred</button>
+            <button class="filter-chip" data-filter="all" id="candidate-filter-all">All</button>
+          </div>
+        </div>
+        <div id="review-candidates-list" class="candidates-list"></div>
+        <div id="review-candidates-empty" class="review-empty-state" hidden>
+          <div class="review-empty-icon">✓</div>
+          <div class="review-empty-title">No candidates to review</div>
+          <div class="review-empty-desc">All memory suggestions have been reviewed or none match the selected filter.</div>
+        </div>
+      </section>
+
+      <p class="review-charter-note">
+        Pending suggestions are proposals requiring review. Rejecting or deferring updates candidate lifecycle. Suggestions are never automatically promoted to permanent memory in this milestone.
+      </p>
+    </div>
+
+    <!-- Existing Search & Evidence View -->
+    <div id="continuity-view-search" role="tabpanel" aria-labelledby="continuity-tab-search" hidden>
+      <p id="continuity-status" role="status">Inspecting local memory…</p>
+      <p id="continuity-state"></p>
+
+      <!-- Search Bar -->
+      <form id="continuity-search" class="search-form-row">
+        <div class="search-input-wrapper">
+          <input id="continuity-query" maxlength="2048" placeholder="Search facts, preferences, goals, summaries, or sessions…">
+          <button type="button" id="continuity-clear-query" class="search-clear-btn" title="Clear query" hidden>✕</button>
+        </div>
+        <button type="submit" id="continuity-search-btn" class="search-submit-btn">Search</button>
+        <button type="button" id="continuity-refresh" class="search-refresh-btn" title="Refresh">↻</button>
+        <button type="button" id="continuity-timeline" class="search-timeline-btn">Timeline</button>
+      </form>
+
+      <!-- Filter Chips Row -->
+      <div class="search-filters-container">
+        <div class="search-filter-group">
+          <span class="search-filter-label">Type:</span>
+          <div class="search-chips" id="search-type-chips">
+            <button type="button" class="search-chip active" data-type="all">All</button>
+            <button type="button" class="search-chip" data-type="fact">Facts</button>
+            <button type="button" class="search-chip" data-type="preference">Preferences</button>
+            <button type="button" class="search-chip" data-type="goal">Goals</button>
+            <button type="button" class="search-chip" data-type="decision">Decisions</button>
+            <button type="button" class="search-chip" data-type="commitment">Commitments</button>
+            <button type="button" class="search-chip" data-type="summary">Summaries</button>
+            <button type="button" class="search-chip" data-type="session">Sessions</button>
+            <button type="button" class="search-chip" data-type="evidence">Evidence</button>
+          </div>
+        </div>
+        <div class="search-filter-group">
+          <span class="search-filter-label">Status:</span>
+          <div class="search-chips" id="search-status-chips">
+            <button type="button" class="search-chip active" data-status="all">All</button>
+            <button type="button" class="search-chip" data-status="active">Active</button>
+            <button type="button" class="search-chip" data-status="completed">Completed</button>
+          </div>
+          <button type="button" id="search-clear-filters" class="search-clear-filters-btn">Clear All</button>
+        </div>
+      </div>
+
+      <!-- Results Toolbar (Count, Sort, Page Size) -->
+      <div class="search-results-toolbar">
+        <span id="search-results-count" class="search-results-count">Showing 0 records</span>
+        <div class="search-toolbar-controls">
+          <label for="search-sort-select" class="search-control-label">Sort:</label>
+          <select id="search-sort-select" class="search-select">
+            <option value="newest" selected>Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="confidence">Confidence</option>
+            <option value="relevance">Relevance</option>
+          </select>
+
+          <label for="search-limit-select" class="search-control-label">Per page:</label>
+          <select id="search-limit-select" class="search-select">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+
+      <p id="continuity-note"></p>
+
+      <!-- Results Container -->
+      <div id="continuity-results" class="search-results-list" role="list"></div>
+
+      <!-- Pagination Footer -->
+      <div id="search-pagination-footer" class="search-pagination-footer">
+        <button type="button" id="search-prev-page" class="search-page-btn" disabled>‹ Previous</button>
+        <span id="search-page-info" class="search-page-info">Page 1 of 1</span>
+        <button type="button" id="search-next-page" class="search-page-btn" disabled>Next ›</button>
+      </div>
+
+      <!-- Detail Drawer -->
+      <section id="continuity-detail" class="search-detail-drawer" aria-label="Memory evidence and history" hidden>
+        <div class="search-detail-header">
+          <h3 id="search-detail-title" class="search-detail-title">Record Details</h3>
+          <button type="button" id="search-detail-close" class="search-detail-close-btn" title="Close drawer">✕</button>
+        </div>
+        <div id="search-detail-body" class="search-detail-body"></div>
+      </section>
+
+      <!-- Preserved Mutation Actions (Edit Fact, Resolve, Invalidate/Erase) -->
+      <form id="continuity-edit" hidden><label for="continuity-value">Correct this fact</label><input id="continuity-value" maxlength="4000" required><button type="submit">Review correction</button></form>
+      <button id="continuity-resolve" hidden>Review completion</button>
+      <div id="continuity-remove" hidden class="continuity-actions"><button id="continuity-invalidate">Remove from current memory</button><button id="continuity-delete">Review permanent erasure</button></div>
+      <p class="muted small">Local evidence, not instructions. Proposals require confirmation. Permanent erasure shows its full scope; offline backups remain separate.</p>
+    </div>
+
+    <!-- Persistent Profile Summary View -->
+    <div id="continuity-view-summary" role="tabpanel" aria-labelledby="continuity-tab-summary" hidden>
+      <div class="review-toolbar">
+        <h3 class="review-card-title">Persistent User Profile Summary</h3>
+        <button id="summary-refresh-btn" class="review-refresh-btn" aria-label="Refresh profile summary">↻ Refresh</button>
+      </div>
+      <div id="summary-status-bar" class="review-status-bar" role="status" aria-live="polite" hidden></div>
+      <div id="summary-content" class="review-card" style="margin-top: 12px; white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.5; max-height: 500px; overflow-y: auto;">
+        Loading profile summary…
+      </div>
+    </div>
   </dialog>
   <main class="workspace" id="workspace" tabindex="-1">
     <section class="presence" aria-label="LUMINA assistant">
@@ -65,6 +256,194 @@
         <div class="composer-actions"><button type="button" id="attach" class="composer-icon" aria-label="Upload a document" title="Upload a document">+</button><input id="file-upload" type="file" hidden multiple><button type="button" id="mic" class="mic-button" aria-pressed="false" aria-describedby="mic-hint" aria-label="Talk to LUMINA" title="Open microphone"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="12" rx="4"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"></path></svg><span class="mic-label">Talk</span></button><button type="button" id="stop" class="quiet" aria-label="Stop speech and current request">Stop</button><button type="submit" class="send" aria-label="Send message" title="Send message"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h14M13 5l7 7-7 7"></path></svg></button></div>
       </form>
       <div class="input-options"><label><input type="checkbox" id="spoken" checked> Spoken replies</label><span id="mic-hint" role="status" aria-live="polite">Microphone off</span><button type="button" id="mic-settings" class="quiet">Microphone settings</button></div>
+    </section>
+
+    <!-- LUMINA EARTH WORKSPACE (P1.3 In-Place Workspace Integration) -->
+    <section id="earth-workspace" class="earth-workspace" hidden aria-label="Earth exploration workspace">
+      <div class="earth-bar">
+        <span>LUMINA EARTH · 3D EXPLORATION</span>
+        <div class="earth-toolbar">
+          <button type="button" id="earth-toggle-daynight" class="earth-btn-toggle" aria-pressed="false" title="Toggle solar illumination and night side terminator">
+            <span class="earth-toggle-icon">☀</span>
+            <span id="earth-toggle-label" class="earth-toggle-label">Day/Night: OFF</span>
+          </button>
+          <button type="button" id="earth-toggle-atlas" class="earth-btn-toggle" aria-pressed="false" title="Toggle Atlas saved places panel">
+            <span class="earth-toggle-icon">📌</span>
+            <span id="earth-atlas-label" class="earth-toggle-label">Atlas</span>
+          </button>
+        </div>
+        <span class="earth-hint">Drag to rotate · Scroll or +/− to zoom · Arrow keys</span>
+      </div>
+      <div id="earth-stage" class="earth-stage" data-earth-state="idle">
+        <p id="earth-status" class="earth-status" role="status" aria-live="polite">Starting…</p>
+
+        <!-- Search Overlay -->
+        <div class="earth-search-container" id="earth-search-container">
+          <form class="earth-search-form" id="earth-search-form" role="search" aria-label="Search places">
+            <input type="search" id="earth-search-input" class="earth-search-input" placeholder="Search city or place…" autocomplete="off" spellcheck="false" maxlength="200" aria-autocomplete="list" aria-controls="earth-search-results">
+            <button type="submit" id="earth-search-submit" class="earth-search-submit" aria-label="Submit search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            </button>
+            <button type="button" id="earth-search-clear" class="earth-search-clear" aria-label="Clear search" hidden>×</button>
+          </form>
+          <div id="earth-search-feedback" class="earth-search-feedback" role="status" aria-live="polite" hidden></div>
+          <ul id="earth-search-results" class="earth-search-results" role="listbox" aria-label="Location search results" hidden></ul>
+        </div>
+
+        <!-- Location Information Panel & Weather Card -->
+        <div id="earth-info-card" class="earth-info-card" hidden aria-live="polite">
+          <button type="button" class="earth-info-close" id="earth-info-close" aria-label="Close location card">×</button>
+          <h2 class="earth-info-title" id="earth-info-title"></h2>
+          <p class="earth-info-sub" id="earth-info-sub"></p>
+          <div class="earth-info-details" id="earth-info-details"></div>
+          <!-- Local Time Intelligence (P1.6) -->
+          <div id="earth-local-time-wrap" class="earth-local-time-wrap" hidden>
+            <div class="earth-local-time-main">
+              <span class="earth-local-time-clock" id="earth-local-time-clock">--:--:--</span>
+              <span class="earth-local-time-period" id="earth-local-time-period"></span>
+            </div>
+            <div class="earth-local-time-meta">
+              <span id="earth-local-time-date" class="earth-local-time-date"></span>
+              <span class="earth-local-time-divider" aria-hidden="true">·</span>
+              <span id="earth-local-time-tz" class="earth-local-time-tz"></span>
+            </div>
+          </div>
+          <div id="earth-weather-container" class="earth-weather-container"></div>
+          <button type="button" id="earth-save-location-btn" class="earth-btn-sm earth-btn-primary" style="margin-top: 8px; width: 100%;" disabled>Save to Atlas</button>
+          <div class="earth-info-attribution" id="earth-info-attribution">Geocoding: Open-Meteo / GeoNames (CC BY 4.0)</div>
+        </div>
+
+        <!-- Atlas Panel (P1.5 Saved Places & P1.6 Search History) -->
+        <aside id="earth-atlas-panel" class="earth-atlas-panel" hidden aria-label="Atlas saved places">
+          <div class="earth-atlas-header">
+            <div class="earth-atlas-title-row">
+              <span class="earth-atlas-title">Atlas</span>
+              <span id="earth-atlas-count" class="earth-atlas-count-badge">0</span>
+            </div>
+            <div class="earth-atlas-header-actions">
+              <button type="button" id="earth-atlas-new-btn" class="earth-btn-sm earth-btn-secondary" title="Add place manually">+ New</button>
+              <button type="button" id="earth-atlas-refresh" class="earth-atlas-header-btn" title="Refresh places" aria-label="Refresh places">↻</button>
+              <button type="button" id="earth-atlas-close" class="earth-atlas-header-btn" title="Close Atlas" aria-label="Close Atlas">×</button>
+            </div>
+          </div>
+
+          <!-- Atlas Tabs (P1.6) -->
+          <div class="earth-atlas-tabs" role="tablist" aria-label="Atlas sections">
+            <button type="button" id="earth-atlas-tab-saved" class="earth-atlas-tab active" role="tab" aria-selected="true" aria-controls="earth-atlas-saved-section">
+              <span>Saved Places</span>
+              <span id="earth-atlas-saved-badge" class="earth-atlas-tab-badge">0</span>
+            </button>
+            <button type="button" id="earth-atlas-tab-history" class="earth-atlas-tab" role="tab" aria-selected="false" aria-controls="earth-atlas-history-section">
+              <span>Recent Searches</span>
+              <span id="earth-atlas-history-badge" class="earth-atlas-tab-badge">0</span>
+            </button>
+          </div>
+
+          <!-- Saved Places Section -->
+          <div id="earth-atlas-saved-section" class="earth-atlas-section">
+            <!-- Loading state -->
+            <div id="earth-atlas-loading" class="earth-atlas-loading" hidden>
+              <span class="earth-atlas-spinner"></span>
+              <span>Loading saved places…</span>
+            </div>
+
+            <!-- Error state -->
+            <div id="earth-atlas-error" class="earth-atlas-error" hidden>
+              <p id="earth-atlas-error-msg" class="earth-atlas-error-msg"></p>
+              <button type="button" id="earth-atlas-retry" class="earth-btn-sm earth-btn-secondary">Retry</button>
+            </div>
+
+            <!-- Form drawer (Create / Edit) -->
+            <div id="earth-atlas-form-wrap" class="earth-atlas-form-wrap" hidden>
+              <h3 id="earth-atlas-form-title" class="earth-atlas-form-title">Save Place to Atlas</h3>
+              <form id="earth-atlas-form" class="earth-atlas-form">
+                <label class="earth-atlas-label">
+                  Name <span class="required">*</span>
+                  <input type="text" id="earth-atlas-name" class="earth-atlas-input" placeholder="e.g. Kathmandu, Base Camp" required maxlength="120" autocomplete="off">
+                </label>
+                <label class="earth-atlas-label">
+                  Category
+                  <select id="earth-atlas-category" class="earth-atlas-select">
+                    <option value="city">City</option>
+                    <option value="mountain">Mountain</option>
+                    <option value="landmark">Landmark</option>
+                    <option value="island">Island</option>
+                    <option value="water">Water / Ocean</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+                <label class="earth-atlas-label">
+                  Description / Notes
+                  <textarea id="earth-atlas-desc" class="earth-atlas-textarea" placeholder="Optional notes or memories…" rows="2" maxlength="500"></textarea>
+                </label>
+                <div class="earth-atlas-coords-row">
+                  <span class="earth-atlas-coords-label">Coordinates:</span>
+                  <span id="earth-atlas-coords" class="earth-atlas-coords-val">—</span>
+                </div>
+                <div id="earth-atlas-form-feedback" class="earth-atlas-form-feedback" hidden></div>
+                <div class="earth-atlas-form-actions">
+                  <button type="submit" id="earth-atlas-submit" class="earth-btn-sm earth-btn-primary">Save Place</button>
+                  <button type="button" id="earth-atlas-cancel" class="earth-btn-sm earth-btn-secondary">Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Empty state -->
+            <div id="earth-atlas-empty" class="earth-atlas-empty" hidden>
+              <div class="earth-atlas-empty-icon">📍</div>
+              <p class="earth-atlas-empty-title">No saved places yet</p>
+              <p class="earth-atlas-empty-sub">Search for a location or pick a spot on the globe, then click "Save to Atlas".</p>
+              <button type="button" id="earth-atlas-empty-save" class="earth-btn-sm earth-btn-primary" disabled>Save Selected Location</button>
+            </div>
+
+            <!-- Saved Places List -->
+            <div id="earth-atlas-list" class="earth-atlas-list" role="listbox" aria-label="Saved waypoints list"></div>
+
+            <!-- Pagination -->
+            <div id="earth-atlas-pagination" class="earth-atlas-pagination" hidden>
+              <span id="earth-atlas-page-info" class="earth-atlas-page-info">1–10 of 10</span>
+              <div class="earth-atlas-page-btns">
+                <button type="button" id="earth-atlas-prev" class="earth-btn-sm earth-btn-secondary" disabled>Previous</button>
+                <button type="button" id="earth-atlas-next" class="earth-btn-sm earth-btn-secondary" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Searches Section (P1.6) -->
+          <div id="earth-atlas-history-section" class="earth-atlas-section" hidden>
+            <div class="earth-history-toolbar">
+              <span class="earth-history-caption">Recent Searches</span>
+              <button type="button" id="earth-history-clear-btn" class="earth-btn-sm earth-btn-danger-outline" title="Clear all search history" disabled>Clear All</button>
+            </div>
+
+            <!-- Clear Confirmation Banner -->
+            <div id="earth-history-confirm" class="earth-history-confirm" hidden>
+              <span class="earth-history-confirm-text">Clear all search history?</span>
+              <div class="earth-history-confirm-actions">
+                <button type="button" id="earth-history-confirm-btn" class="earth-btn-sm earth-btn-danger">Clear All</button>
+                <button type="button" id="earth-history-cancel-btn" class="earth-btn-sm earth-btn-secondary">Cancel</button>
+              </div>
+            </div>
+
+            <!-- History Loading State -->
+            <div id="earth-history-loading" class="earth-atlas-loading" hidden>
+              <span class="earth-atlas-spinner"></span>
+              <span>Loading search history…</span>
+            </div>
+
+            <!-- History Empty State -->
+            <div id="earth-history-empty" class="earth-atlas-empty" hidden>
+              <div class="earth-atlas-empty-icon">🕒</div>
+              <p class="earth-atlas-empty-title">No search history yet</p>
+              <p class="earth-atlas-empty-sub">Search for cities, mountains, or landmarks and they will appear here for fast revisit.</p>
+            </div>
+
+            <!-- History List -->
+            <div id="earth-history-list" class="earth-history-list" role="listbox" aria-label="Recent searches list"></div>
+          </div>
+        </aside>
+      </div>
+      <div class="earth-credit">Imagery: NASA Goddard Space Flight Center / Blue Marble (public domain) · Geocoding & Weather: Open-Meteo / GeoNames (CC BY 4.0). Rendered locally with three.js (MIT).</div>
     </section>
 
     <section class="environment" aria-label="Knowledge environment">
@@ -105,7 +484,7 @@
     <pre id="workspace-output" aria-live="polite"></pre>
   </dialog>
   <dialog id="controls"><div class="dialog-head"><h2>Local controls</h2><button id="controls-close" aria-label="Close local controls">×</button></div>
-    <p class="muted">Text commands work without online reasoning. Try “open notepad”, “system info”, or “read file README.md”.</p>
+    <p class="muted">Read-only commands work without online reasoning. Try “system info”, “list windows”, or “read file README.md”. Application launch and general desktop mutations remain disabled.</p>
     <section class="phase1-console" aria-labelledby="phase1-title"><div class="section-title"><h3 id="phase1-title">Phase One capabilities</h3><button id="phase1-refresh" type="button" class="quiet">Refresh</button></div><div id="phase1-status" class="phase1-status" role="status">Checking local capabilities…</div>
       <form id="phase1-web-search" class="compact-form"><input id="phase1-query" maxlength="500" placeholder="Search the public web"><button>Search</button></form>
       <form id="phase1-browser" class="compact-form"><input id="phase1-url" maxlength="4096" placeholder="https://example.com/"><button>Open supervised browser</button></form>
@@ -123,7 +502,7 @@
     <form id="task-start"><label class="field">Worker<select id="task-worker"></select></label><label class="field">Workspace<input id="task-workspace" maxlength="2048" placeholder="Current project"></label><label class="field">Task<textarea id="task-message" required maxlength="12000"></textarea></label><p class="muted small">Starting sends this task to the selected configured worker. Review the worker and purpose before starting.</p><button id="task-submit">Start selected worker</button></form>
     <div id="task-list"></div>
   </dialog>
-  <dialog id="confirmation"><div class="dialog-head"><h2 id="confirmation-title">Confirm action</h2></div><p id="confirmation-message">Review this action before continuing.</p><p id="confirmation-target"></p><button id="confirmation-approve">Continue</button><button id="confirmation-deny">Cancel</button></dialog>
+  <dialog id="confirmation"><div class="dialog-head"><h2 id="confirmation-title">Confirm action</h2></div><p id="confirmation-message">Review this action before continuing.</p><p id="confirmation-target"></p><pre id="confirmation-details" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto" aria-label="Complete proposed operation"></pre><button id="confirmation-approve">Continue</button><button id="confirmation-deny">Cancel</button></dialog>
   <dialog id="details"><div class="dialog-head"><h2 id="details-title">Result</h2><button id="details-close" aria-label="Close result">×</button></div><pre id="details-text"></pre></dialog>
   <dialog id="workers-panel" style="width:min(1100px,94vw);max-width:94vw"><div class="dialog-head"><h2>Supervised workers</h2><button id="workers-close" aria-label="Close workers">×</button></div>
     <p class="muted">Live terminal output stays here. LUMINA speaks only the result.</p>
@@ -142,9 +521,145 @@
   <form id="automation-watch-form"><label>Watch topic <input id="automation-query" required maxlength="500" placeholder="A topic you want to follow"></label><label>Check interval (seconds) <input id="automation-interval" type="number" min="60" max="86400" value="900" required></label><button type="submit">Create watch</button></form><div id="automation-watches"></div></section>
   <section><h3>Notifications</h3><p id="automation-notification-state"></p><button id="automation-enable" type="button">Enable notifications</button><button id="automation-disable" type="button">Disable notifications</button><button id="automation-snooze" type="button">Snooze one hour</button><form id="automation-quiet-form"><label>Timezone <input id="automation-timezone" value="Asia/Kathmandu" required></label><label>Quiet from <input id="automation-quiet-start" type="time"></label><label>Until <input id="automation-quiet-end" type="time"></label><button type="submit">Save quiet hours</button></form><div id="automation-inbox"></div></section>
   <section><h3>Windows settings</h3><form id="automation-settings-form"><label>Setting <select id="automation-setting-kind"><option value="brightness">Brightness</option><option value="mouse_speed">Mouse speed</option><option value="window">Window state</option><option value="audio">Audio volume and mute</option></select></label><label>Target identity <input id="automation-setting-target" maxlength="300"></label><label>Value / volume percent <input id="automation-setting-value" maxlength="20"></label><label><input id="automation-audio-mute" type="checkbox">Mute audio endpoint</label><label>Operation <select id="automation-setting-action"><option value="list_targets">Find targets</option><option value="get">Read current value</option><option value="set">Change value</option></select></label><button type="submit">Run setting operation</button></form><label>Undo record <input id="automation-undo-id"></label><button type="button" id="automation-undo">Undo verified change</button><pre id="automation-settings-result" style="white-space:pre-wrap;max-height:250px;overflow:auto"></pre></section>
-<section><h3>Windows controls</h3><p>Inspect a window, then use its snapshot and exact control identity. Changes require confirmation.</p><button type="button" id="automation-windows">List windows</button><form id="automation-control-form"><label>Window identity <input id="automation-window"></label><label>Snapshot <input id="automation-snapshot"></label><label>Control identity <input id="automation-control"></label><label>Text (not logged) <input id="automation-control-text" maxlength="8192" autocomplete="off"></label><label>Operation <select id="automation-control-action"><option value="inspect">Inspect window</option><option value="invoke">Invoke control</option><option value="type">Set text</option></select></label><button type="submit">Run control operation</button></form><pre id="automation-controls-result" style="white-space:pre-wrap;max-height:250px;overflow:auto"></pre></section>
+<section><h3>Windows controls</h3><p>Inspect windows and accessible controls. General Invoke and text changes are disabled; only the owned scratchpad admits bounded changes.</p><button type="button" id="automation-windows">List windows</button><form id="automation-control-form"><label>Window identity <input id="automation-window"></label><label>Snapshot <input id="automation-snapshot"></label><label>Control identity <input id="automation-control"></label><label>Text (not logged) <input id="automation-control-text" maxlength="8192" autocomplete="off"></label><label>Operation <select id="automation-control-action"><option value="inspect">Inspect window</option><option value="invoke">Invoke control</option><option value="type">Set text</option></select></label><button type="submit">Run control operation</button></form><pre id="automation-controls-result" style="white-space:pre-wrap;max-height:250px;overflow:auto"></pre></section>
 <section><h3>YouTube evidence</h3><form id="automation-youtube-form"><label>Video URL <input id="automation-youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=…"></label><label>Local transcript path (optional) <input id="automation-transcript-path"></label><label>Operation <select id="automation-youtube-action"><option value="metadata">Metadata</option><option value="transcript">Transcript</option><option value="summarize">Summary context</option><option value="open">Open video</option></select></label><button type="submit">Retrieve</button></form><pre id="automation-video-result" style="white-space:pre-wrap;max-height:280px;overflow:auto"></pre></section>
   <p id="automation-result" role="status" style="white-space:pre-wrap"></p>
 </dialog>
+
+  <!-- LUMINA COMMAND DECK (CD): Operational Command Center -->
+  <dialog id="command-deck-panel" class="command-deck-modal" aria-labelledby="command-deck-title">
+    <div class="cd-header">
+      <div class="cd-title-group">
+        <h2 id="command-deck-title"><span class="cd-icon" aria-hidden="true">⌘</span> COMMAND DECK</h2>
+        <span class="cd-subtitle">OPERATIONAL COMMAND CENTER</span>
+      </div>
+      <button id="command-deck-close" class="cd-close-btn" aria-label="Close Command Deck">×</button>
+    </div>
+
+    <!-- CD-F001: Live Status Header Strip -->
+    <section id="cd-live-status" class="cd-live-strip" aria-label="Live operational status"></section>
+
+    <!-- Operational Dashboard Grid -->
+    <div class="cd-grid">
+      <!-- Left Column: Tasks & Timeline -->
+      <div class="cd-column">
+        <!-- CD-F002: Mission Control Task Queue -->
+        <section class="cd-card">
+          <div class="cd-card-header">
+            <h3><span>◈</span> Mission Control</h3>
+            <span id="cd-task-count" class="cd-counter">0 tasks</span>
+          </div>
+          <div id="cd-task-list" class="cd-task-list" role="region" aria-label="Active and recent tasks"></div>
+        </section>
+
+        <!-- CD-F003: Operational Activity Feed -->
+        <section class="cd-card">
+          <div class="cd-card-header">
+            <h3><span>⚙</span> Operational Timeline</h3>
+            <span id="cd-feed-count" class="cd-counter">0 events</span>
+          </div>
+          <div class="cd-filter-bar" role="toolbar" aria-label="Filter timeline">
+            <button class="cd-filter-pill active" data-filter="all" type="button">All</button>
+            <button class="cd-filter-pill" data-filter="task" type="button">Tasks</button>
+            <button class="cd-filter-pill" data-filter="tool" type="button">Tools</button>
+            <button class="cd-filter-pill" data-filter="approval" type="button">Approvals</button>
+            <button class="cd-filter-pill" data-filter="system" type="button">System</button>
+          </div>
+          <div id="cd-feed-list" class="cd-feed-list" role="feed" aria-label="Operational activity feed"></div>
+        </section>
+      </div>
+
+      <!-- Right Column: System Watch & Workspace Monitor -->
+      <div class="cd-column">
+        <!-- CD-F005: System Watch Alerts -->
+        <section class="cd-card">
+          <div class="cd-card-header">
+            <h3><span>⚠</span> System Watch</h3>
+          </div>
+          <div id="cd-system-watch" class="cd-alert-stack" role="status" aria-live="polite"></div>
+        </section>
+
+        <!-- CD-F004: Workspace Monitor -->
+        <section id="cd-workspace-section" class="cd-card">
+          <div class="cd-card-header">
+            <h3><span>▤</span> Workspace Context</h3>
+          </div>
+          <div class="cd-workspace-path">
+            <span id="cd-workspace-path" class="cd-path-text">Reading configured root…</span>
+            <button id="cd-copy-path" class="cd-btn-sm" type="button">Copy Path</button>
+          </div>
+          <p id="cd-workspace-uploads" class="muted small" style="margin:0">Workspace sandbox active</p>
+        </section>
+      </div>
+    </div>
+
+    <!-- CD-F006: Task Diagnostics Drawer -->
+    <aside id="cd-drawer" class="cd-drawer" hidden aria-label="Task Diagnostics">
+      <div class="cd-drawer-header">
+        <h3 id="cd-drawer-title">Task Diagnostics</h3>
+        <button id="cd-drawer-close" class="cd-close-btn" aria-label="Close diagnostics">×</button>
+      </div>
+      <dl class="cd-drawer-dl">
+        <dt>Task ID</dt><dd id="cd-drawer-id">-</dd>
+        <dt>Status</dt><dd id="cd-drawer-status">-</dd>
+        <dt>Created</dt><dd id="cd-drawer-created">-</dd>
+        <dt>Exit Code</dt><dd id="cd-drawer-exit">-</dd>
+      </dl>
+      <h4 style="font-size:11px;margin:10px 0 4px;text-transform:uppercase;color:var(--lumina-text-secondary)">Instruction</h4>
+      <pre id="cd-drawer-instruction"></pre>
+      <h4 style="font-size:11px;margin:10px 0 4px;text-transform:uppercase;color:var(--lumina-text-secondary)">Modified Files</h4>
+      <pre id="cd-drawer-files"></pre>
+      <h4 style="font-size:11px;margin:10px 0 4px;text-transform:uppercase;color:var(--lumina-text-secondary)">Result / Error</h4>
+      <pre id="cd-drawer-error"></pre>
+      <button id="cd-drawer-copy" class="cd-btn-sm" type="button" style="margin-top:auto">Copy Diagnostic Markdown</button>
+    </aside>
+  </dialog>
+
+  <!-- DAILY BRAIN DUMP PANEL -->
+  <dialog id="brain-dump-panel" aria-labelledby="bd-title">
+    <div class="bd-header">
+      <div class="bd-title-group">
+        <span class="bd-icon" aria-hidden="true">⚡</span>
+        <h2 id="bd-title">Daily Brain Dump</h2>
+        <span class="bd-subtitle">Quick Capture</span>
+      </div>
+      <button id="brain-dump-close" class="bd-close-btn icon-button" type="button" aria-label="Close Brain Dump">×</button>
+    </div>
+
+    <div class="bd-composer">
+      <input id="bd-input" class="bd-composer-input" type="text" placeholder="Dump a thought, task, or idea... (Press Enter to save)" autocomplete="off">
+      <select id="bd-category" class="bd-category-select" aria-label="Category">
+        <option value="inbox">Inbox</option>
+        <option value="task">Task</option>
+        <option value="idea">Idea</option>
+        <option value="reminder">Reminder</option>
+        <option value="someday">Someday</option>
+      </select>
+      <button id="bd-add" class="bd-add-btn" type="button">Capture</button>
+    </div>
+
+    <div class="bd-toolbar">
+      <div class="bd-filter-pills" role="toolbar" aria-label="Filter thoughts">
+        <button class="bd-filter-pill active" data-filter="all" type="button">All</button>
+        <button class="bd-filter-pill" data-filter="inbox" type="button">Inbox</button>
+        <button class="bd-filter-pill" data-filter="task" type="button">Task</button>
+        <button class="bd-filter-pill" data-filter="idea" type="button">Idea</button>
+        <button class="bd-filter-pill" data-filter="reminder" type="button">Reminder</button>
+        <button class="bd-filter-pill" data-filter="someday" type="button">Someday</button>
+        <button class="bd-filter-pill" data-status="archived" type="button">Archive</button>
+      </div>
+      <div class="bd-search">
+        <input id="bd-search-input" class="bd-search-input" type="search" placeholder="Search entries..." aria-label="Search entries">
+        <span id="bd-counter" class="bd-counter">0 items</span>
+      </div>
+    </div>
+
+    <div id="bd-items" class="bd-items" role="list" aria-label="Brain dump entries"></div>
+
+    <div class="bd-footer">
+      <span id="bd-footer-stats">0 active thoughts</span>
+      <span>Auto-saved to local runtime</span>
+    </div>
+  </dialog>
 </body>
 </html>
